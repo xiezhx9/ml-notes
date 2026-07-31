@@ -12,3 +12,5 @@
 - [优化器与学习率](./优化器与学习率.md)
 - [Chapter 2：最小二乘与正则化](./Chapter2-最小二乘与正则化.md)
 - [Chapter 7：网络优化与正则化](./Chapter7-网络优化与正则化.md)
+- [Chapter 8：注意力机制与 Transformer](./Chapter8-注意力机制与Transformer.md)
+- [Task 1：Transformer 分类器实现与工程技巧](./Task1-Transformer分类器实现与工程技巧.md)
