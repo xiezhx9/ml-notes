@@ -670,7 +670,313 @@ $$
 > [!warning] 注意力不是严格的特征归因
 > 注意力高表示信息读取权重大，但不保证该 token 对最终分类结果的因果贡献最大。解释分类原因时，还可以结合遮挡实验、输入梯度、Integrated Gradients 等方法。
 
-## 13. 常见误区
+## 13. 现代 Transformer 的主要优化
+
+2017 年的原始 Transformer 奠定了基本结构，但现代 LLM 并不是简单地把原始模型放大。Chapter8 后半部分选择了五组重要改造，它们分别作用于**训练稳定性、位置表示、整体架构、参数容量和长上下文效率**。
+
+### 13.1 先看全局：每种优化解决什么问题
+
+| 改造 | 主要解决的问题 | 核心做法 | 主要收益 | 代价或注意点 |
+|---|---|---|---|---|
+| Pre-LN | 深层网络难训练、梯度路径不稳定 | 子层之前先 Norm，子层输出再加回残差流 | 更容易训练深层模型，对超参数更稳健 | 最终通常还要加一次 Norm；不等于完全不需要 warmup |
+| RoPE | Self-Attention 本身不知道顺序，绝对 PE 对相对距离表达不直接 | 按位置旋转 Q、K 的二维特征对 | 自然编码相对位置、零可训练参数、适合生成模型 | 远超训练长度时仍需位置插值、NTK scaling 或 YaRN 等方法 |
+| Decoder-only | 多种任务使用不同结构和目标，扩展复杂 | 统一使用因果自注意力和 next-token prediction | 结构、数据和训练目标统一，适合规模化与上下文学习 | 自回归生成必须逐 token 解码；不能读取未来 token |
+| MoE | Dense FFN 增大容量时，每个 token 的计算也同步增加 | 路由器让每个 token 只激活 Top-k 个专家 | 总参数量可以很大，但单 token 只使用少量参数 | 需要负载均衡、容量控制和专家并行通信 |
+| 稀疏注意力 | 标准注意力随序列长度产生 $O(T^2)$ 计算与连接 | 只保留局部、扩张或压缩后的部分连接 | 可从算法层面减少长序列计算 | 可能丢失被屏蔽的远距离依赖 |
+| FlashAttention | 标准实现频繁读写显存，并保存完整 scores/weights | 分块计算、在线 Softmax，尽量使用片上 SRAM | 数学结果不变，显著减少显存占用和内存读写 | 不会消除注意力本身 $O(T^2)$ 的理论计算量；依赖后端与硬件支持 |
+
+> [!important] 这些优化不是互相替代的
+> 一个现代 decoder-only 模型可以同时使用 Pre-Norm、RoPE、MoE、滑动窗口和 FlashAttention。它们修改的是 Transformer 的不同部位。
+
+### 13.2 Pre-LN 与 Post-LN
+
+设子层为 $F$，它可以是 MHA，也可以是 FFN。
+
+**Post-LN：先做残差加法，再归一化。**
+
+$$
+Y=\operatorname{LN}\left(X+F(X)\right)
+$$
+
+**Pre-LN：先归一化，再进入子层，主残差流保持直接相加。**
+
+$$
+Y=X+F\left(\operatorname{LN}(X)\right)
+$$
+
+二者最重要的差别不是输出形状，而是梯度传播路径：
+
+- Post-LN 的主路径也必须经过 LayerNorm，深层堆叠时通常更依赖初始化、学习率 warmup 等训练技巧。
+- Pre-LN 中存在从后层到前层更直接的恒等残差路径，梯度更容易跨越很多 Block。
+- Pre-LN 模型通常会在所有 Block 之后再执行一次 Final LayerNorm。
+
+```python
+class PreLNSublayer(nn.Module):
+    def __init__(self, d_model: int):
+        super().__init__()
+        self.norm = nn.LayerNorm(d_model)
+        self.sublayer = nn.Linear(d_model, d_model)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x + self.sublayer(self.norm(x))
+```
+
+本项目实现的完整 Pre-LN Block 是：
+
+$$
+U=X+\operatorname{Dropout}\left(\operatorname{MHA}(\operatorname{LN}(X))\right)
+$$
+
+$$
+Y=U+\operatorname{Dropout}\left(\operatorname{FFN}(\operatorname{LN}(U))\right)
+$$
+
+### 13.3 旋转位置编码 RoPE
+
+正余弦绝对位置编码是把 $PE$ 加到输入 $X$；RoPE 则通常不修改 $X$，而是在注意力内部旋转 Q、K。
+
+将特征两两分组为 $(x_{2i},x_{2i+1})$。位置 $m$ 在第 $i$ 组使用的旋转角度为：
+
+$$
+\phi_{m,i}=m\theta_i,
+\qquad
+\theta_i=10000^{-2i/d}
+$$
+
+对应的二维旋转为：
+
+$$
+\begin{pmatrix}
+x'_{2i}\\
+x'_{2i+1}
+\end{pmatrix}
+=
+\begin{pmatrix}
+\cos\phi_{m,i} & -\sin\phi_{m,i}\\
+\sin\phi_{m,i} & \cos\phi_{m,i}
+\end{pmatrix}
+\begin{pmatrix}
+x_{2i}\\
+x_{2i+1}
+\end{pmatrix}
+$$
+
+旋转矩阵是正交矩阵，所以不会改变向量长度：
+
+$$
+\|R_mx\|_2=\|x\|_2
+$$
+
+更关键的是 Query 位于 $m$、Key 位于 $n$ 时：
+
+$$
+(R_mq)^T(R_nk)=q^TR_m^TR_nk=q^TR_{n-m}k
+$$
+
+因此注意力点积自然包含相对位置 $n-m$。RoPE 通常只应用于 Q、K，因为它的任务是改变“谁与谁匹配”的分数；V 承载被读取的内容，一般不需要旋转。
+
+Notebook 使用复数实现旋转，核心对应关系是：
+
+```python
+# [..., T, d] -> [..., T, d/2]，相邻两维组成一个复数
+x_complex = torch.view_as_complex(
+    x.float().reshape(*x.shape[:-1], -1, 2)
+)
+
+# e^(i * position * theta)，复数乘法等价于二维旋转
+x_rotated = torch.view_as_real(x_complex * freqs).flatten(-2)
+```
+
+这里要求 head dimension $d$ 是偶数，并且 Q、K 必须使用同一组频率。
+
+### 13.4 三种 Transformer 架构范式
+
+| 架构 | Block 中的注意力 | 典型训练目标 | 典型模型 | 常见任务 |
+|---|---|---|---|---|
+| Encoder-only | 双向 Self-Attention | Masked Language Modeling 等 | BERT、RoBERTa | 分类、抽取、检索、表示学习 |
+| Decoder-only | Causal Self-Attention | Next-token Prediction | GPT、Llama、Qwen | 续写、对话、代码生成、推理 |
+| Encoder-Decoder | Encoder 双向注意力；Decoder 因果注意力和 Cross-Attention | 条件序列生成 | 原始 Transformer、T5、BART | 翻译、摘要、序列到序列 |
+
+三者的数据流可以简化成：
+
+```mermaid
+flowchart LR
+    A["Encoder-only: 全部输入 token"] --> B["双向 Self-Attention"] --> C["每个 token 的上下文表示"]
+    D["Decoder-only: 已知 token"] --> E["Causal Self-Attention"] --> F["预测下一个 token"]
+    G["Encoder 输入"] --> H["Encoder 表示"] --> I["Cross-Attention"]
+    J["Decoder 已生成 token"] --> K["Causal Self-Attention"] --> I --> L["预测下一个输出 token"]
+```
+
+Decoder-only 成为生成式 LLM 主流，主要因为：
+
+1. **结构统一**：只需重复一种 Block，没有独立 Encoder 和 Cross-Attention。
+2. **目标统一**：任何文本都可以转化为“根据前文预测下一个 token”，不强制要求成对的输入输出语料。
+3. **使用统一**：任务说明、示例和待处理内容都能放进同一个上下文，通过 in-context learning 完成不同任务。
+4. **推理可缓存**：历史 token 的 K、V 不会在后续生成中改变，可以使用 KV cache，避免每一步重复计算全部历史投影。
+
+> [!note] “Decoder-only” 不等于保留原始 Transformer Decoder 的全部结构
+> 它通常只有带 causal mask 的 Self-Attention，不存在用于读取另一个 Encoder 输出的 Cross-Attention。
+
+### 13.5 混合专家 MoE
+
+Dense Transformer 中，每个 token 都经过同一个 FFN。为了增大模型容量，若直接扩大 FFN，参数量和每个 token 的计算量会一起上涨。
+
+MoE 用 $E$ 个专家 FFN 替换一个 Dense FFN，并增加一个路由器：
+
+$$
+g(x)=\operatorname{softmax}(W_gx)
+$$
+
+路由器只保留权重最大的 $k$ 个专家，设其集合为 $S(x)=\operatorname{TopK}(g(x))$，再在被选中的专家之间重新归一化：
+
+$$
+\tilde g_e(x)
+=
+\frac{e^{z_e}}
+{\sum_{j\in S(x)}e^{z_j}},
+\qquad e\in S(x)
+$$
+
+最终输出是：
+
+$$
+\operatorname{MoE}(x)
+=
+\sum_{e\in S(x)}\tilde g_e(x)E_e(x)
+$$
+
+以 8 个专家、Top-2 路由为例：模型保存 8 组专家参数，但每个 token 只运行其中 2 个。这样可以显著增加**总参数容量**，同时让**激活参数量和单 token 计算量**远小于把 8 个专家全部运行一遍。
+
+```python
+logits = gate(x)                              # [B, T, E]
+top_logits, expert_idx = torch.topk(logits, k, dim=-1)
+route_weight = F.softmax(top_logits, dim=-1) # [B, T, k]
+
+# 对每个专家收集选中它的 token，执行专家 FFN 后按 route_weight 加权汇总
+```
+
+真实 MoE 的难点不在公式本身，而在工程约束：
+
+- **负载均衡**：路由器可能把大多数 token 都发给少数专家，需要 auxiliary loss 鼓励均匀使用。
+- **专家容量**：单个专家一次能处理的 token 数有限，溢出 token 需要丢弃、重路由或增加容量。
+- **专家并行**：专家分布在不同设备上时，需要 all-to-all 通信，通信可能抵消节省的计算。
+- **训练稳定性**：路由决策离散且会变化，需要监控专家使用率和路由概率。
+
+### 13.6 长上下文：稀疏注意力与 FlashAttention
+
+标准注意力的分数矩阵为 `[B,H,T,T]`。忽略 batch 和 head 后：
+
+$$
+\text{计算量约为 }O(T^2d_k),
+\qquad
+\text{注意力矩阵空间约为 }O(T^2)
+$$
+
+序列长度从 $T$ 变为 $2T$ 时，注意力分数的数量约变成 4 倍。Chapter8 从算法和系统两个层面介绍解决思路。
+
+#### 13.6.1 稀疏注意力：减少允许连接的 token 对
+
+- **Sliding Window Attention**：每个 Query 只看附近 $w$ 个位置，局部连接量约为 $O(Tw)$。
+- **Dilated Attention**：按照一定间隔采样远处位置，用较少连接扩大感受野。
+- **压缩注意力**：把远距离历史压缩成少量摘要 token，再与近期细粒度 token 一起参与注意力。
+
+Notebook 中双向滑动窗口 mask 的核心代码是：
+
+```python
+def sliding_window_mask(length: int, window: int) -> torch.Tensor:
+    i = torch.arange(length)[:, None]
+    j = torch.arange(length)[None, :]
+    return (i - j).abs() <= window  # [T, T]，True 表示可见
+```
+
+这个 mask 允许同时看左侧和右侧，适合双向 Encoder 演示。Decoder-only 还必须禁止未来位置：
+
+```python
+def causal_sliding_window_mask(length: int, window: int) -> torch.Tensor:
+    query = torch.arange(length)[:, None]
+    key = torch.arange(length)[None, :]
+    return (key <= query) & ((query - key) <= window)
+```
+
+稀疏注意力真正改变了注意力图的连接模式，因此可能减少计算，也可能损失被屏蔽的远距离信息。
+
+#### 13.6.2 FlashAttention：数学不变，执行方式改变
+
+普通实现往往会：
+
+1. 计算并写回完整 $QK^T$。
+2. 从显存读出 scores，计算并写回 Softmax 权重。
+3. 再读出权重，与 V 相乘。
+
+长序列下，瓶颈不只是浮点计算，还包括 GPU 高带宽显存 HBM 与片上 SRAM 之间的数据搬运。FlashAttention 将 Q、K、V 分块，在片上完成局部点积，并用**在线 Softmax**逐块维护每行的最大值、归一化分母和加权输出，无须把完整 $T\times T$ 注意力矩阵保存到 HBM。
+
+因此 FlashAttention：
+
+- 与标准注意力具有相同的数学语义，不是近似注意力。
+- 仍然执行数量级为 $O(T^2)$ 的 token 配对计算。
+- 主要通过减少中间矩阵存储和 HBM 读写获得更低显存占用与更高速度。
+
+PyTorch 2.x 推荐使用统一的 SDPA 接口：
+
+```python
+import torch.nn.functional as F
+
+dropout_p = self.dropout_p if self.training else 0.0
+context = F.scaled_dot_product_attention(
+    q, k, v,                         # [B, H, T, dk]
+    attn_mask=attention_mask,
+    dropout_p=dropout_p,
+    is_causal=False,
+)
+```
+
+在受支持的设备、dtype 和形状上，PyTorch 会选择 FlashAttention 等优化内核，否则自动回退到其他实现。
+
+> [!warning] SDPA 的两个易错点
+> 1. SDPA 的布尔 `attn_mask` 中 `True` 表示**允许参与注意力**，要留意它与某些 PyTorch mask API 的语义相反。
+> 2. `scaled_dot_product_attention` 会按传入的 `dropout_p` 执行 Dropout；评估时应显式传入 `0.0`，不能只依赖 `model.eval()`。
+
+### 13.7 这些改造如何组合
+
+一个简化的现代 decoder-only Block 可以写成：
+
+$$
+Q,K,V=\operatorname{Project}(\operatorname{Norm}(X))
+$$
+
+$$
+Q'=\operatorname{RoPE}(Q),
+\qquad
+K'=\operatorname{RoPE}(K)
+$$
+
+$$
+U=X+\operatorname{CausalAttention}_{\text{Flash/Window}}(Q',K',V)
+$$
+
+$$
+Y=U+\operatorname{MoE}(\operatorname{Norm}(U))
+$$
+
+这里可以看出：
+
+- Pre-Norm 决定 Norm 与残差流的位置。
+- RoPE 修改 Q、K 的位置表示。
+- Causal mask 决定 decoder-only 的可见范围。
+- Sliding Window 决定是否减少远距离连接。
+- FlashAttention 优化同一注意力公式的执行过程。
+- MoE 替换 Block 中原本的 Dense FFN。
+
+Chapter8 介绍的是现代 Transformer 的代表性改造，并非完整清单。继续学习现代 LLM 时还会遇到 RMSNorm、SwiGLU、MQA/GQA、KV cache 量化等技术。
+
+> [!question] 引导性自测
+> 1. FlashAttention 为什么能降低显存，却没有把理论计算复杂度从 $O(T^2)$ 降下来？
+> 2. MoE 为什么可以同时拥有更多总参数和较少的单 token 激活参数？
+> 3. RoPE 为什么通常旋转 Q、K，而不旋转 V？
+> 4. Notebook 的双向滑动窗口 mask 为什么不能直接用于 decoder-only 生成？
+> 5. Pre-LN 已经让每个子层先归一化，为什么模型末尾通常还需要 Final Norm？
+
+## 14. 常见误区
 
 ### 误区 1：Q、K 必须先做 norm，才能假设方差约为 1
 
@@ -692,7 +998,7 @@ Padding mask 通常只禁止读取 PAD Key。PAD Query 行的影响由 pooling�
 
 注意力集中只说明分布更尖锐。它可能捕捉到有效关键词，也可能退化成只看自身、标点或数据偏差，必须结合验证指标和多个 head 判断。
 
-## 14. 形状速查表
+## 15. 形状速查表
 
 | 阶段 | 形状 |
 |---|---|
@@ -708,7 +1014,7 @@ Padding mask 通常只禁止读取 PAD Key。PAD Query 行的影响由 pooling�
 | Masked pooling | `[B, D]` |
 | 分类 logits | `[B, C]` |
 
-## 15. 引导性自测
+## 16. 引导性自测
 
 1. 为什么 softmax 要沿 $T_k$ 维计算，而不是沿 $T_q$ 维？
 	1. 按照约定来吧，毕竟此处注意力表示query应该对key所分配的注意力
@@ -779,7 +1085,7 @@ Padding mask 通常只禁止读取 PAD Key。PAD Query 行的影响由 pooling�
 > [!answer] 参考答案
 > 它可能说明这个 head 在保留“差”的局部身份或强调情感关键词，也可能只是退化成接近单位映射。它不一定是坏现象：多头机制允许不同 head 分工，而且残差连接还保留原输入。应结合其他 head、不同样本、验证指标以及遮挡或替换 token 后预测是否变化来判断，不能只凭一张热图下结论。
 
-## 16. 一句话总结
+## 17. 一句话总结
 
 $$
 \boxed{
