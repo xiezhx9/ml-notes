@@ -25,6 +25,12 @@
 ### 04 项目实践
 
 - [Task 1：Transformer 分类器实现与工程技巧](./04-项目实践/Task1-Transformer分类器实现与工程技巧.md)
+- [Task 2：从零实现 mini-GPT](./04-项目实践/Task2-miniGPT学习索引.md)
+- [Task 2.1：Byte-level BPE 分词器](./04-项目实践/Task2-01-Byte-Level-BPE分词器.md)
+- [Task 2.2：RoPE 旋转位置编码](./04-项目实践/Task2-02-RoPE旋转位置编码.md)
+- [Task 2.3：Causal Attention 与 KV Cache](./04-项目实践/Task2-03-Causal-Attention与KV-Cache.md)
+- [Task 2.4：mini-GPT 模型构建与生成](./04-项目实践/Task2-04-miniGPT模型构建与生成.md)
+- [Task 2.5：训练、评估与困惑度调优](./04-项目实践/Task2-05-训练评估与困惑度调优.md)
 
 ### 附件
 
