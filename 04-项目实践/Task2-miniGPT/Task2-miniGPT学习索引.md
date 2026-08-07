@@ -38,7 +38,7 @@ aliases:
 | 最佳 checkpoint dev loss | `3.8046` | 越低越好 |
 | 最佳 checkpoint dev PPL | `44.91` | 越低越好 |
 
-![[assets/Task2-miniGPT-training-curves.png]]
+![mini-GPT 训练曲线](assets/Task2-miniGPT-training-curves.png)
 
 > [!important] 如何读这次训练
 > Train PPL 从 `238.00` 持续降到 `11.50`，dev PPL 在第 4 轮附近达到最佳后反弹到 `78.30`。模型已经能拟合训练集，主要问题是小语料过拟合，而不是没学会；early stopping 保存最佳轮次是最终通过评测的关键。

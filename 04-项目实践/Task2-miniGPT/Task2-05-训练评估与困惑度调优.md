@@ -347,7 +347,7 @@ Epoch 曲线更平滑、文件更小；batch 曲线更适合排查 spike。
 
 ## 15. 当前曲线：欠拟合还是过拟合
 
-![[assets/Task2-miniGPT-training-curves.png]]
+![mini-GPT 训练曲线](assets/Task2-miniGPT-training-curves.png)
 
 关键数据：
 

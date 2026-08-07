@@ -24,14 +24,14 @@
 
 ### 04 项目实践
 
-- [Task 1：Transformer 分类器实现与工程技巧](./04-项目实践/Task1-Transformer分类器实现与工程技巧.md)
-- [Task 2：从零实现 mini-GPT](./04-项目实践/Task2-miniGPT学习索引.md)
-- [Task 2.1：Byte-level BPE 分词器](./04-项目实践/Task2-01-Byte-Level-BPE分词器.md)
-- [Task 2.2：RoPE 旋转位置编码](./04-项目实践/Task2-02-RoPE旋转位置编码.md)
-- [Task 2.3：Causal Attention 与 KV Cache](./04-项目实践/Task2-03-Causal-Attention与KV-Cache.md)
-- [Task 2.4：mini-GPT 模型构建与生成](./04-项目实践/Task2-04-miniGPT模型构建与生成.md)
-- [Task 2.5：训练、评估与困惑度调优](./04-项目实践/Task2-05-训练评估与困惑度调优.md)
+- [Task 1：Transformer 分类器实现与工程技巧](./04-项目实践/Task1-Transformer分类器/Task1-Transformer分类器实现与工程技巧.md)
+- [Task 2：从零实现 mini-GPT](./04-项目实践/Task2-miniGPT/Task2-miniGPT学习索引.md)
+- [Task 2.1：Byte-level BPE 分词器](./04-项目实践/Task2-miniGPT/Task2-01-Byte-Level-BPE分词器.md)
+- [Task 2.2：RoPE 旋转位置编码](./04-项目实践/Task2-miniGPT/Task2-02-RoPE旋转位置编码.md)
+- [Task 2.3：Causal Attention 与 KV Cache](./04-项目实践/Task2-miniGPT/Task2-03-Causal-Attention与KV-Cache.md)
+- [Task 2.4：mini-GPT 模型构建与生成](./04-项目实践/Task2-miniGPT/Task2-04-miniGPT模型构建与生成.md)
+- [Task 2.5：训练、评估与困惑度调优](./04-项目实践/Task2-miniGPT/Task2-05-训练评估与困惑度调优.md)
 
 ### 附件
 
-图片等非 Markdown 资源统一存放在 [`assets/`](./assets/)。
+公共附件存放在 [`assets/`](./assets/)，项目专属附件存放在对应 Task 目录的 `assets/` 中。
