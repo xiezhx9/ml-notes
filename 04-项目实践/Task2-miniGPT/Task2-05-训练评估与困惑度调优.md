@@ -205,6 +205,26 @@ $$
 
 ## 9. 5% Warmup + Cosine
 
+Scheduler 不替代 AdamW，也不产生梯度；它只改变优化器在第 $s$ 步使用的学习率：
+
+$$
+\theta_{s+1}=\theta_s-\eta_s\cdot\operatorname{AdamWUpdate}_s
+$$
+
+常见调度策略：
+
+| 策略 | 变化方式 | 特点 |
+|---|---|---|
+| Constant | 全程固定 | 简单，后期可能持续震荡 |
+| Step/MultiStep | 到里程碑突然乘 $\gamma$ | 直观但不平滑 |
+| Exponential | 每步乘固定比例 | 平滑但可能衰减过快 |
+| Linear Decay | 线性下降到最小值 | 轨迹容易预测 |
+| Cosine Decay | 按余弦曲线平滑下降 | Transformer/LLM 常用 |
+| ReduceLROnPlateau | dev 指标停滞时下降 | 数据驱动，但容易受验证波动影响 |
+| OneCycle | 先升高再快速降低 | 常用于较短的监督训练 |
+
+当前代码在每个 batch 完成 `optimizer.step()` 后调用 `scheduler.step()`，所以学习率按 optimizer step 而不是 epoch 更新。
+
 总 optimizer steps：
 
 $$
@@ -217,7 +237,15 @@ $$
 S_w\approx0.05S
 $$
 
-前 5% 线性提高学习率，之后 cosine 衰减到最小值：
+当前 `start_factor=0.1`，因此前 5% 从 $0.1\eta_{max}$ 线性提高到 $\eta_{max}$：
+
+$$
+\eta_s=\eta_{max}\left[
+0.1+0.9\frac{s}{S_w}
+\right],\qquad 0\le s\le S_w
+$$
+
+按照当前配置，就是从 $3\times10^{-5}$ 升到 $3\times10^{-4}$。之后 cosine 衰减到最小值：
 
 $$
 \eta_s=\eta_{min}
@@ -234,6 +262,34 @@ $$
 | Gradient clipping | 限制偶发异常梯度 |
 
 本次加入 warmup 后 PPL 没明显改善并不意外。Warmup 更像稳定器，不保证改变最终泛化上限。
+
+### 9.1 为什么既想前期大，又怕前期太大
+
+“前期使用较大学习率”并不是指随机初始化后的第一步，而是指短暂 warmup 后的主要学习阶段。整体策略是：
+
+$$
+\boxed{\text{小心启动}\rightarrow\text{大步学习}\rightarrow\text{小步收敛}}
+$$
+
+| 阶段 | 学习率 | 原因 |
+|---|---|---|
+| 冷启动 | 小并逐渐升高 | AdamW 动量统计尚未稳定，随机 batch 和梯度尺度可能波动 |
+| 主训练 | 接近峰值 | 参数离较优区域远，需要快速学习主要结构 |
+| 收敛期 | 逐渐降低 | 减少越过较优区域和 mini-batch 噪声造成的震荡 |
+
+mini-batch 梯度可以写成：
+
+$$
+g_s=\nabla L(\theta_s)+\epsilon_s
+$$
+
+接近较优点时 $\nabla L(\theta_s)\approx0$，但采样噪声 $\epsilon_s$ 不会自动消失：
+
+$$
+\Delta\theta_s\approx-\eta_s\epsilon_s
+$$
+
+若后期仍保持较大学习率，参数会在较优区域附近持续抖动；cosine decay 通过减小 $\eta_s$ 让调整越来越细。Warmup 太短可能仍不稳定，太长则会让有限训练步数长期处于低学习率、造成学习不足。
 
 ## 10. Evaluate、`no_grad` 与 `eval`
 
@@ -464,13 +520,22 @@ torch.backends.mps.is_available()
 ## 22. 自测
 
 1. 为什么 target 不需要 one-hot？
+	1. cross entropy支持用整形index代替one-hot
 2. `shuffle=True` 会不会漏掉训练样本？
+	1. 不会，shuffle与否不减少样本数量，只是顺序不同
 3. 为什么最后一个 batch 可能小于配置的 batch size？
+	1. 文本切割的token数量是不可预见的，不一定能被batch size 整除
 4. `evaluate` 的 no-grad 能否覆盖内部 loss 函数？
+	1. 可以的，no-grad动态上下文
 5. Warmup 与 gradient clipping 分别解决什么问题？
+	1. 梯度裁剪防止训练过程中单次梯度爆炸的问题
+	2. 防止初始学习率过猛
 6. Train PPL 降而 dev PPL 升说明什么？
+	1. 过拟合了
 7. 为什么 PPL 不能跨 tokenizer 直接比较？
+	1. token 划分、预测步数和类别空间都不同，平均 NLL 尺度改变。
 8. 为什么当前 `best.pt` 不能精确恢复训练？
+	1. 没有保存优化器和scheduler
 
 > [!answer]- 答案
 > 1. CrossEntropy 用整数 ID 直接索引正确类别的 log-probability。

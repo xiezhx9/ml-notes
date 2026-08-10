@@ -70,7 +70,7 @@ $$
 每个 token 独立通过同一组前馈层：
 
 $$
-\operatorname{FFN}(x)=W_2\operatorname{GELU}(W_1x+b_1)+b_2
+\operatorname{FFN}(x)=\operatorname{GELU}(xW_1+b_1)W_2+b_2
 $$
 
 形状：
@@ -80,6 +80,30 @@ $$
 $$
 
 为什么叫 FeedForward：没有循环状态，也不在 token 之间通信，数据只从第一层流向第二层。
+
+对第 $b$ 个样本、第 $t$ 个 token，FFN 可以单独写成：
+
+$$
+y_{b,t}=\operatorname{GELU}(x_{b,t}W_1+b_1)W_2+b_2
+$$
+
+右侧没有任何其他位置 $x_{b,s}$，所以当 $s\ne t$ 时：
+
+$$
+\frac{\partial y_{b,t}}{\partial x_{b,s}}=0
+$$
+
+`nn.Linear` 对 `[B,T,D]` 的最后一维做变换，相当于每个 token 并行使用同一套参数。它混合的是一个 token 内的特征通道，而不是 token 轴：
+
+| 模块 | 混合方向 | 公式中的关键操作 |
+|---|---|---|
+| Attention | token mixing | $z_t=\sum_s\alpha_{t,s}v_s$ |
+| FFN | channel mixing | $x_tW_1\rightarrow\operatorname{GELU}\rightarrow W_2$ |
+
+例如两个 token 为 `[1,2]` 和 `[10,20]`，直接经过 FFN 时它们分别与 $W_1$ 相乘；修改第二个 token 不会改变第一个 token 的 FFN 输出。
+
+> [!important] FFN 不通信，但会加工通信后的结果
+> FFN 的输入通常已经经过 Attention，因此 $x_{b,t}$ 可能包含其他 token 汇总来的上下文。FFN 不亲自读取其他位置，但会对 Attention 已经混合好的信息进行非线性加工。
 
 为什么先扩维：更宽的中间空间允许组合更多非线性特征，再压回 $D$ 维参与残差。
 
@@ -270,10 +294,15 @@ $$
 ## 16. 自测
 
 1. 为什么 FFN 不负责 token 之间通信？
+	1. 注意力模块负责token间的关系，FFN负责将统计的特征输出
 2. 为什么 Decoder Block 的输出必须仍为 $D$ 维？
+	1. 因为正式使用block一般是连续的list，block自己的输入就需要是D维；残差相加的要求
 3. 为什么最终每个 token 要输出 $V$ 个 logits？
+	1. 词表大小是V，logits表示对应词的概率，从中选择词作为输出
 4. 生成第二步为什么只输入刚生成的一个 ID？
+	1. 旧的token不需要参与新token的计算，kv cache会缓存已计算过的 k v参数
 5. Top-k 与 top-p 是否互斥？
+	1. 不互斥可以共存，可以先top k再top p；不过先排序比较好操作
 
 > [!answer]- 答案
 > 1. FFN 独立作用于每个 `[D]` 向量，token 轴上没有矩阵混合。

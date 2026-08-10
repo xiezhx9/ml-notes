@@ -265,7 +265,7 @@ $$
 后续每次只输入一个新 token：
 
 $$
-T_q=1,qquad T_k=T_{past}+1
+T_q=1,\qquad T_k=T_{past}+1
 $$
 
 所以即使是 self-attention，cache 模式下 Query 长度和 Key 长度也可以不同。
@@ -288,7 +288,72 @@ mask = query_pos >= key_pos
 
 ## 12. KV Cache 省了什么
 
-没有 cache，每生成一个 token 都重新投影全部历史 token 的 K/V。使用 cache 后，历史 K/V 只算一次，后续只计算新增 token。
+没有 cache 时，每生成一个 token 都要把完整历史序列重新送入所有 Decoder Block。以当前上下文长度 $t$ 为例：
+
+$$
+X_{1:t}\in\mathbb R^{B\times t\times D}
+$$
+
+Attention score 的形状是：
+
+$$
+[B,H,t,t]
+$$
+
+但自回归生成实际只需要最后一个位置的 logits。使用 cache 后，后续步骤只输入新增 token：
+
+$$
+x_t\in\mathbb R^{B\times1\times D}
+$$
+
+每层只计算新增的 $q_t,k_t,v_t$，并让新 Query 读取历史 cache：
+
+$$
+o_t=\operatorname{softmax}\left(
+\frac{q_tK_{all}^T}{\sqrt{d_h}}
+\right)V_{all}
+$$
+
+此时 score 缩小为：
+
+$$
+[B,H,1,t]
+$$
+
+因此每层单步 Attention score 的主要计算从 $O(t^2d_h)$ 降到 $O(td_h)$。
+
+### 12.1 历史 token 跳过的步骤
+
+| 每一层中的步骤 | 历史 token | 新 token |
+|---|---|---|
+| Embedding 与 LayerNorm | 跳过 | 必须计算 |
+| Q/K/V 线性投影 | 跳过 | 必须计算 |
+| Q/K 的 RoPE | 跳过 | 必须按新位置计算 |
+| 历史 Query 的 Attention 行 | 跳过 | 只计算新 Query 这一行 |
+| $W_O$、残差与 FFN | 跳过 | 必须计算 |
+| 读取历史 K/V | 必须读取 | 新 K/V 追加进 cache |
+
+历史 Q 通常不缓存，因为未来生成只需要新的 Query；历史 token 只需要继续作为可检索的 Key 和 Value。注意“历史 token 不重新计算”不等于“历史 token 不参与计算”：新 Query 仍然要和全部历史 K 做点积，并从全部历史 V 聚合内容。
+
+### 12.2 为什么旧状态可以跳过
+
+Causal mask 保证第 $i$ 个位置只能依赖：
+
+$$
+h_i=f(x_0,x_1,\ldots,x_i)
+$$
+
+追加未来 token $x_t$ 后，旧状态 $h_0,\ldots,h_{t-1}$ 不会变化。因此旧 token 在每层的 K/V 也不会变化，可以直接复用。这是 KV cache 能保持数学等价而不只是近似加速的根本原因。
+
+### 12.3 显存代价
+
+缓存大小近似为：
+
+$$
+M_{KV}=2LBTH_{kv}d_hs
+$$
+
+其中 2 表示 K/V，$L$ 是层数，$B$ 是 batch，$T$ 是上下文长度，$H_{kv}$ 是 KV head 数，$s$ 是每个元素的字节数。cache 会随上下文、并发数和层数线性增长，并且 decode 每一步都要读取历史 K/V，因此长上下文推理经常受显存容量和带宽限制。
 
 KV cache：
 
@@ -318,6 +383,8 @@ Q_new, K_new = rope(Q_new, K_new, position_offset=T_past)
 2. 每次输入一个 token 并传递 cache，拼出 `logits_inc`。
 3. 比较最大绝对误差。
 
+全量路径中第 $i$ 个位置只能看到 $0\ldots i$；增量路径在第 $i$ 步也恰好拥有这些 token 的 cache，所以两条路径理论上相同。
+
 $$
 \max|Z_{full}-Z_{cache}|<10^{-4}
 $$
@@ -330,7 +397,49 @@ $$
 
 微小差异来自浮点矩阵运算顺序，并非逻辑错误。
 
-## 15. 常见错误
+测试必须使用 `model.eval()` 关闭 Attention Dropout，否则两条路径会抽到不同随机 mask。`torch.no_grad()` 只负责关闭梯度图、节省内存，并不能关闭 Dropout。
+
+## 15. 现代 KV Cache 优化
+
+现代优化围绕两件事：**减少逻辑上需要保存的内容**，以及**更高效地管理和读取已经保存的内容**。
+
+| 优化 | 核心思路 | 主要权衡 |
+|---|---|---|
+| MQA | 所有 Query head 共用一组 K/V | cache 最小，表达能力可能下降 |
+| GQA | 一组 Query head 共用一组 K/V | 质量与效率的常用折中 |
+| MLA | 把 K/V 内容压缩到低维 latent 后缓存 | 压缩激进，但模型结构更复杂 |
+| KV 量化 | 用 INT8、INT4 甚至更低位保存 K/V | 降低显存和带宽，可能带来误差 |
+| Sliding Window | 只保存最近 $W$ 个位置 | cache 有界，但丢弃直接的远程访问 |
+| PagedAttention | 把 cache 切成固定大小物理块 | 减少碎片，方便动态 batch 和共享 |
+| Prefix Cache | 跨请求复用相同前缀的 KV blocks | 只节省共享前缀的 prefill |
+
+### MHA、GQA 与 MQA
+
+原始多头注意力中 $H_{kv}=H_q$。GQA 让多个 Query head 共享一组 K/V；MQA 则令：
+
+$$
+H_{kv}=1
+$$
+
+若 $H_q=32,H_{kv}=8$，仅从 head 数看，GQA 的 KV cache 约为原始 MHA 的 $1/4$；MQA 则约为 $1/32$。
+
+### 当前 Task2 与现代服务系统的差异
+
+当前实现使用 MHA、未量化 Tensor 和逐步 `torch.cat`：
+
+```python
+K_all = torch.cat([K_cache, K_new], dim=-2)
+V_all = torch.cat([V_cache, V_new], dim=-2)
+```
+
+它适合验证原理，但 `cat` 可能反复申请空间和复制历史数据。推理引擎通常预分配连续区域，或用 PagedAttention 按块管理；相同 system prompt 或多轮对话还可以使用 Prefix Cache 跨请求复用 prefill 结果。
+
+> [!note] FlashAttention 与 KV Cache 不完全是同一类优化
+> FlashAttention 主要优化 Attention kernel 的显存读写并避免显式保存完整 score 矩阵；PagedAttention、GQA、MLA 和 KV 量化才更直接针对 cache 的大小或管理方式。
+
+延伸阅读：[MQA](https://arxiv.org/abs/1911.02150)、[GQA](https://arxiv.org/abs/2305.13245)、[Mistral 7B 的 GQA/SWA](https://arxiv.org/abs/2310.06825)、[DeepSeek-V2 MLA](https://arxiv.org/abs/2405.04434)、[KIVI KV 量化](https://arxiv.org/abs/2402.02750)、[PagedAttention](https://arxiv.org/abs/2309.06180)。
+
+## 16. 常见错误
 
 | 错误 | 表现 |
 |---|---|
@@ -342,13 +451,18 @@ $$
 | `train()` 状态做等价测试 | Dropout 导致两次结果随机不同 |
 | 超过 cache/位置上限 | 内存增长或 RoPE 越界 |
 
-## 16. 自测
+## 17. 自测
 
 1. `scores[b,h,3,0]` 表示什么？
+	1. 第b个样本中，第四个token对第一个token，在第h个子特征空间分配的注意力分数
 2. 为什么 causal mask 是 token×token，而不是 batch×token？
+	1. casual mask本身是个对角矩阵，表示注意力的屏蔽关系，自然形状是[Tq, Tk]
 3. cache 已有 20 个 token 时，新一步的 Q/K/V 形状分别是什么？
+	1. Q是单行向量，K V仍然是完整矩阵
 4. 为什么 KV cache 缓存 K/V 而通常不缓存 Q？
+	1. 旧token的Q不会参与新token的注意力计算
 5. 为什么等价测试必须 `model.eval()`？
+	1. 关掉attention dropout
 
 > [!answer]- 答案
 > 1. 第 b 个样本、第 h 个 head 中，第 4 个 Query 对第 1 个 Key 的分数。
