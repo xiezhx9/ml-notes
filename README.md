@@ -31,6 +31,12 @@
 - [Task 2.3：Causal Attention 与 KV Cache](./04-项目实践/Task2-miniGPT/Task2-03-Causal-Attention与KV-Cache.md)
 - [Task 2.4：mini-GPT 模型构建与生成](./04-项目实践/Task2-miniGPT/Task2-04-miniGPT模型构建与生成.md)
 - [Task 2.5：训练、评估与困惑度调优](./04-项目实践/Task2-miniGPT/Task2-05-训练评估与困惑度调优.md)
+- [Task 3：SFT、DPO 与大模型后训练](./04-项目实践/Task3-SFT-DPO/Task3-SFT-DPO学习索引.md)
+- [Task 3.1：LoRA 与 Adapter 生命周期](./04-项目实践/Task3-SFT-DPO/Task3-01-LoRA与Adapter生命周期.md)
+- [Task 3.2：SFT 数据与 Assistant-Only Loss](./04-项目实践/Task3-SFT-DPO/Task3-02-SFT数据与Assistant-Only-Loss.md)
+- [Task 3.3：DPO 偏好优化](./04-项目实践/Task3-SFT-DPO/Task3-03-DPO偏好优化.md)
+- [Task 3.4：训练工程与故障排查](./04-项目实践/Task3-SFT-DPO/Task3-04-训练工程与故障排查.md)
+- [Task 3.5：S1-S5 实验复盘](./04-项目实践/Task3-SFT-DPO/Task3-05-S1-S5实验复盘.md)
 
 ### 附件
 
