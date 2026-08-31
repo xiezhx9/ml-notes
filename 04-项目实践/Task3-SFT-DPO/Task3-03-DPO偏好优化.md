@@ -338,10 +338,15 @@ SFT 与自己作 reference 时 margin 恒为 0，所以本项目把平局计为 
 ## 13. 自测
 
 1. 为什么 reference 必须与 policy 从同一个 SFT 状态开始？
+	1. DPO 测量的是相对固定 SFT 基线的偏好变化；起点不同会混入无关模型差异
 2. `log_softmax(dim=-1)` 的 `-1` 表示什么？
+	1. logits做归一化
 3. 为什么回答序列概率使用 token log-prob 的和，而不是概率直接相乘？
+	1. 概率相乘数值不够稳定，对数求和数值更稳定，也便于mask
 4. DPO 是否保证 policy 绝对更喜欢 chosen？
+	1. 不能，只能保证policy相比reference 对chosen和rejected的对比程度更大
 5. 为什么 DPO 推理只加载最终 DPO adapter 即可？
+	1. DPO结果记录的是A/B完整状态，base已经是sft之后的模型了
 
 > [!answer]- 参考答案
 > 1. DPO 测量的是相对固定 SFT 基线的偏好变化；起点不同会混入无关模型差异。

@@ -303,11 +303,27 @@ merged.weight.add_(delta_weight)
 ## 10. 自测
 
 1. 为什么 B 全零不会让 LoRA 永远学不动？
+
+    1. B的梯度更新和A有关，A为随机矩阵，第一次更新后，B就有值了
+
 2. `B(A(x))` 为什么等价于一次权重更新 $\Delta W=BA$？
+
+    1. 矩阵乘法的性质，结合律
+
 3. LoRA 参数减少 99.9%，训练时间为什么只快约 1.89 倍？
+
+    1. LoRA训练时，所有参数都需参与计算，只是只有部分参数需要保留梯度而已
+
 4. 为什么加载 adapter 前必须先注入完全相同的模块结构？
+
+    1. adapter保存对应的A，B矩阵参数，需要有正确的基模base model和对应lora结构meta data才能恢复，模块名和shape需要一致
+
 5. `alpha` 固定时提高 rank，缩放系数会怎样变化？
+
+    1. 变小缩放系数是 $\alpha / r$
 6. 为什么 LoRA 的 A/B 通常设置 `bias=False`？原始 Linear 的 bias 会被删除吗？
+	1. 为了保持lora运算的简洁 $\Delta W = BA$
+	2. 原始Linear的bias会保留，一起冻结
 
 > [!answer]- 参考答案
 > 1. A 随机，B 第一轮能从 `XA^T` 获得梯度；B 非零后 A 也开始获得梯度。

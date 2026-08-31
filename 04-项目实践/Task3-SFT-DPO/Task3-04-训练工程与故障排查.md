@@ -384,10 +384,15 @@ QLoRA 的核心组合是：
 ## 15. 自测
 
 1. 冻结 reference 参数后为什么还要 `eval()`？
+	1. 部分模块需要eval来进入推理模式，比如dropout
 2. 最后一个 accumulation window 不足时，固定除以配置值有什么后果？
+	1. 梯度相比正常情况下数据会偏小
 3. 为什么 `max_length` 对 DPO 时间可能呈超线性影响？
+	1. 注意力计算的复杂度是$O(T^2)$
 4. 为什么 S1 要在独立子进程中比较内存？
+	1. 因为统计的指标内存峰值在同一进程中会记录之前的
 5. 验证 loss 为什么按有效 token 加权而不是平均 batch loss？
+	1. 每个batch的有效token数不同
 
 > [!answer]- 参考答案
 > 1. 冻结只控制梯度，`eval()` 还会关闭 dropout，保证 reference 基线确定。

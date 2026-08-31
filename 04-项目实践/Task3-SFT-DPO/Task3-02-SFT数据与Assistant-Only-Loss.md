@@ -97,7 +97,7 @@ tokenizer 再生成：
 
 $$
 \text{input\_ids}\in\mathbb Z^T,\qquad
-\text{attention\_mask}\in\{0,1\}^T,qquad
+\text{attention\_mask}\in\{0,1\}^T,
 \text{labels}\in(\mathbb Z\cup\{-100\})^T.
 $$
 
@@ -251,6 +251,7 @@ $$
 
 > [!warning] `batch_size=1` 不能保证没有 NaN
 > 关键不是一个 batch 有几条样本，而是整个 batch 是否至少存在有效 assistant token。增大 batch size 只是提高“混入一条有效样本”的概率，不能修复错误的截断策略。
+> sft和之前的miniGPT不同，训练的数据集不是连续的，而是从不同的对话中截取的，每个样本都是新的一行，所以不断的填充数据不会缓解loss为NaN的问题
 
 更稳健的做法：
 
@@ -351,10 +352,15 @@ assistant: final answer
 ## 13. 自测
 
 1. Prompt labels 为 `-100` 后，模型为什么仍能根据 prompt 学会回答？
+	1. 回答部分的labels不为零，模型会记住在输出回答时prompt仍然会参与计算
 2. `attention_mask=0` 能否代替 `labels=-100`？
+	1. 不能，attention mask用来表示哪些token不参与forward attention计算，label用来标记哪些不参与loss fn计算
 3. 为什么整个 batch 全是 `-100` 会产生 NaN？
+	1. 平均型误差，分母是有效token，如果有效token为0，则会出现NaN
 4. `input_ids=[B,T]`、模型输出 `[B,T,V]` 时，CrossEntropy 如何计算？
+	1. 内部需要shift一下 label = [B, T] , 对logits softmax一下然后 sum(-log(prop))
 5. 梯度累积最后只剩 3 个 micro-batch 时，应除以几？
+	1. 除以3，梯度累积系数应与实际运行的m batch数量相同
 
 > [!answer]- 参考答案
 > 1. Prompt 仍参与前向并影响 assistant hidden states，有效回答 loss 的梯度会穿过这段上下文。
