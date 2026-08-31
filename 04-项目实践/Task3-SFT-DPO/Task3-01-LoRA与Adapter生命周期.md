@@ -75,6 +75,48 @@ $$
 因此模块写法和矩阵公式完全等价。公式中的转置来自 `nn.Linear` 把权重保存为
 `[out_features, in_features]`，不是 LoRA 多做了一次特殊运算。
 
+### 2.1 A、B 必须使用 `bias=False` 吗
+
+数学上并非强制，但标准 LoRA 通常让 A、B 都不带 bias：
+
+```python
+A = nn.Linear(in_features, r, bias=False)
+B = nn.Linear(r, out_features, bias=False)
+```
+
+这样 LoRA 分支严格满足：
+
+$$
+B(A(x))=x(BA)^T,
+$$
+
+因此可以清楚地解释为只对原权重增加低秩更新 $\Delta W=BA$。
+
+如果 A、B 分别带有 bias $a$、$c$：
+
+$$
+A(x)=xA^T+a,
+\qquad
+B(h)=hB^T+c,
+$$
+
+则复合结果变成：
+
+$$
+B(A(x))=x(BA)^T+aB^T+c.
+$$
+
+后两项是额外的输出偏置，不再是纯粹的低秩权重更新。尤其当 B 的 bias $c$
+初始非零时，即使 `B.weight` 全零，刚注入 LoRA 也会立刻改变 base 模型的输出。
+
+工程上应区分两件事：
+
+- LoRA 新增的 A/B 分支通常都使用 `bias=False`；
+- 原始 `base_layer.bias` 仍然存在，通常随 base 一起冻结，也可以在特定微调策略中单独放开训练。
+
+因此，无 bias 不是 LoRA 能工作的硬性条件，而是为了保持零影响初始化、减少参数，
+并维持“只学习低秩 $\Delta W$”的清晰定义。
+
 ## 3. 参数量为何显著下降
 
 全量权重参数量：
@@ -265,6 +307,7 @@ merged.weight.add_(delta_weight)
 3. LoRA 参数减少 99.9%，训练时间为什么只快约 1.89 倍？
 4. 为什么加载 adapter 前必须先注入完全相同的模块结构？
 5. `alpha` 固定时提高 rank，缩放系数会怎样变化？
+6. 为什么 LoRA 的 A/B 通常设置 `bias=False`？原始 Linear 的 bias 会被删除吗？
 
 > [!answer]- 参考答案
 > 1. A 随机，B 第一轮能从 `XA^T` 获得梯度；B 非零后 A 也开始获得梯度。
@@ -272,3 +315,4 @@ merged.weight.add_(delta_weight)
 > 3. frozen base 仍执行前向和反向；LoRA 主要节省参数梯度、优化器状态和保存成本。
 > 4. adapter state dict 只含 A/B，需要一致的模块名和 shape 才能找到并复制。
 > 5. `alpha/r` 变小；所以固定 alpha 的 rank 消融同时改变容量和更新缩放。
+> 6. 无 bias 时 A/B 的复合严格等价于低秩权重更新 $BA$；加入 bias 会额外产生输出偏置项。原始 Linear 的 bias 不会被删除，通常只是随 base 一起冻结。
