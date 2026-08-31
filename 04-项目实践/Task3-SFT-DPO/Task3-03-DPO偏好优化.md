@@ -37,6 +37,51 @@ $$
 
 DPO 通常不是 SFT 的替代品。没有先学会基本指令行为，直接用少量偏好对很难得到稳定模型。
 
+### 1.1 常见原始数据格式
+
+DPO 样本的本质都是同一组 $(x,y_w,y_l)$：公共 prompt $x$、偏好回答
+$y_w$（chosen）和较差回答 $y_l$（rejected）。常见 JSON/JSONL 形式如下。
+
+**字符串三元组**：
+
+```json
+{
+  "prompt": "如何缓解轻微的头痛？",
+  "chosen": "可以先休息、补充水分；如果持续或加重，建议咨询医生。",
+  "rejected": "不用管，肯定会自己好。"
+}
+```
+
+**公共对话 Prompt 加两种回答**：
+
+```json
+{
+  "prompt": [
+    {"role": "system", "content": "你是一位严谨的助手。"},
+    {"role": "user", "content": "解释一下梯度下降。"}
+  ],
+  "chosen": [
+    {"role": "assistant", "content": "梯度下降沿损失函数的负梯度方向更新参数。"}
+  ],
+  "rejected": [
+    {"role": "assistant", "content": "梯度下降就是随便调整参数。"}
+  ]
+}
+```
+
+**两段完整对话**：chosen 和 rejected 都保存完整 messages，解析器需要提取两边
+完全相同的公共前缀作为 prompt，再分别保留后续回答。
+
+无论源字段如何命名，进入训练前都要构造：
+
+```text
+chosen sequence   = prompt + chosen answer
+rejected sequence = prompt + rejected answer
+```
+
+chosen/rejected 的回答长度可以不同，经过 collate 后才在 batch 内动态 padding。
+Reference 的 log-probability 由冻结模型现场计算或预计算缓存，不是偏好数据必须提供的字段。
+
 ## 2. Policy 和 Reference 在 PyTorch 中是什么
 
 两者都是完整的 `nn.Module`：

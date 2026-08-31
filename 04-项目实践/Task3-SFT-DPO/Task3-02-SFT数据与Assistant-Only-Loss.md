@@ -19,6 +19,59 @@ aliases:
 
 ## 1. SFT 的输入和目标
 
+### 1.1 常见原始数据格式
+
+SFT 数据没有唯一的字段标准，常见的 JSON/JSONL 形式有以下几种。
+
+**指令格式（Alpaca 风格）**：
+
+```json
+{
+  "instruction": "把下面的句子翻译成英文",
+  "input": "今天天气很好。",
+  "output": "The weather is nice today."
+}
+```
+
+**Prompt/Completion 格式**：
+
+```json
+{
+  "prompt": "中国的首都是哪里？",
+  "completion": "中国的首都是北京。"
+}
+```
+
+**多轮 Messages 格式**：
+
+```json
+{
+  "messages": [
+    {"role": "system", "content": "你是一位数学助手。"},
+    {"role": "user", "content": "2 加 3 等于多少？"},
+    {"role": "assistant", "content": "等于 5。"}
+  ]
+}
+```
+
+**工具调用格式**还会加入 `tool_calls` 和 `tool` 角色：
+
+```json
+{
+  "messages": [
+    {"role": "user", "content": "查询上海今天的天气"},
+    {"role": "assistant", "tool_calls": [
+      {"name": "get_weather", "arguments": {"city": "上海"}}
+    ]},
+    {"role": "tool", "content": "{\"temperature\": 28}"},
+    {"role": "assistant", "content": "上海今天约 28℃。"}
+  ]
+}
+```
+
+字段名虽然不同，训练前通常都先归一化为 `list[ChatMessage]`，再通过当前模型的
+chat template 序列化。ChatML 是序列化后的文本协议，不是原始数据必须采用的 JSON 字段名。
+
 一条多轮数据：
 
 ```python
@@ -43,7 +96,7 @@ You are helpful.<|im_end|>
 tokenizer 再生成：
 
 $$
-\text{input\_ids}\in\mathbb Z^T,qquad
+\text{input\_ids}\in\mathbb Z^T,\qquad
 \text{attention\_mask}\in\{0,1\}^T,qquad
 \text{labels}\in(\mathbb Z\cup\{-100\})^T.
 $$
