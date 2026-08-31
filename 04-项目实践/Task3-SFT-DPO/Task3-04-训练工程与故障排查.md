@@ -268,16 +268,106 @@ $$
 
 ## 13. 微调方法扩展地图
 
-| 方法 | 更新内容 | 特点 |
-|---|---|---|
-| Full FT | 全部参数 | 容量最大，显存/存储成本高 |
-| LoRA | 低秩 A/B | 简洁、易保存和切换 |
-| QLoRA | 量化 base + LoRA | 进一步降低显存，注意量化误差与 kernel 支持 |
-| Adapter layer | 插入瓶颈模块 | 模块化，但增加推理结构 |
-| Prefix/Prompt tuning | 可训练虚拟 token | 参数更少，复杂任务容量可能受限 |
-| BitFit | 主要训练 bias | 极省参数，适应能力有限 |
+讨论“微调方法”时要区分两个相互独立的维度：
 
-这些是参数更新策略；它们都可以与 SFT 等目标组合，部分也可用于偏好优化。
+1. **参数更新方式**：决定训练哪些参数，例如 Full FT、LoRA、Adapter。
+2. **训练目标**：决定模型从什么监督信号学习，例如 SFT、DPO。
+
+因此 `LoRA + SFT`、`QLoRA + DPO` 都是合理组合；SFT/DPO 不是 LoRA 的同类替代方案。
+
+### 13.1 常见参数更新方式
+
+| 方法 | 训练内容 | 主要特点 |
+|---|---|---|
+| Full Fine-Tuning | 全部模型参数 | 自由度最高，但梯度、优化器状态和 checkpoint 成本最大 |
+| Head-Only | 只训练分类头等输出模块 | 成本最低，适合分类，不适合深度改变生成能力 |
+| Partial Fine-Tuning | 最后几层或指定模块 | 成本和表达能力介于 Full FT 与 PEFT 之间 |
+| BitFit | 原模型中的 bias | 参数极少，但表达能力有限 |
+| Adapter | 插入小型瓶颈网络 | Base 冻结，任务能力保存在独立模块中 |
+| Prompt Tuning | 可训练的虚拟 token embedding | 不修改模型层，但占用输入位置 |
+| Prefix Tuning | 每层 Attention 的虚拟 K/V 前缀 | 比输入层 prompt 更深，但增加上下文与 KV Cache 开销 |
+| IA³ | K、V 和 FFN 的通道缩放向量 | 参数量通常比 LoRA 更少 |
+| LoRA | Linear 的低秩权重增量 | 效果、成本和工程成熟度较均衡 |
+| QLoRA | 量化的冻结 Base + LoRA | 显著减少 Base 权重占用，适合显存有限的设备 |
+
+### 13.2 Adapter
+
+Adapter 在 Transformer 层中插入瓶颈网络：
+
+$$
+h'=h+W_{\mathrm{up}}\phi(W_{\mathrm{down}}h).
+$$
+
+它和 LoRA 都冻结 Base，但作用位置不同：LoRA 学习 Linear 的权重增量，Adapter
+增加新的网络路径。Adapter 通常带来额外推理计算；LoRA 可以合并进原权重，合并后
+几乎没有额外推理开销。
+
+### 13.3 Prompt Tuning 与 Prefix Tuning
+
+Prompt Tuning 在输入前加入可训练的连续向量：
+
+$$
+X'=[P_1,P_2,\ldots,P_m,X].
+$$
+
+这些 $P_i$ 是模型学习出的 embedding，不是人类编写的自然语言提示词。
+
+Prefix Tuning 则为每层 Attention 增加可训练的 K/V 前缀：
+
+$$
+K'=[K_{\mathrm{prefix}};K],
+\qquad
+V'=[V_{\mathrm{prefix}};V].
+$$
+
+它能影响每一层注意力，但推理时也需要保留这些前缀。
+
+### 13.4 IA³
+
+IA³ 不增加低秩矩阵，而是学习通道缩放向量：
+
+$$
+K'=l_k\odot K,
+\qquad
+V'=l_v\odot V,
+\qquad
+H'_{\mathrm{FFN}}=l_f\odot H_{\mathrm{FFN}}.
+$$
+
+它学习哪些通道应该放大或缩小，参数量通常小于 LoRA，但可调整的方向也更受限制。
+
+### 13.5 QLoRA
+
+QLoRA 的核心组合是：
+
+```text
+低比特量化的冻结 Base + 可训练 LoRA + 较高精度的关键计算
+```
+
+量化主要降低 Base 权重的显存占用；LoRA 参数、梯度以及数值敏感的计算通常仍使用
+`float16`、`bfloat16` 或 `float32`。QLoRA 解决的是“Base 放不进显存”的问题，
+并不改变 LoRA 学习低秩更新的基本原理。
+
+### 13.6 LoRA 常见变体
+
+- **AdaLoRA**：训练过程中动态分配不同层的 rank；
+- **DoRA**：把权重更新拆成方向与大小；
+- **LoRA+**：为 A、B 设置不同学习率；
+- **rsLoRA**：调整 rank scaling，提高较大 rank 下的稳定性；
+- **QLoRA**：将量化 Base 与 LoRA 训练结合。
+
+### 13.7 参数方法与后训练目标的组合
+
+| 后训练目标 | 学习信号 |
+|---|---|
+| Continued Pretraining | 领域文本的 next-token prediction |
+| SFT | 示范回答与指令格式 |
+| DPO | chosen 相对 rejected 的偏好 |
+| Reward Modeling | 回答质量评分 |
+| RLHF/PPO | 奖励模型提供的优化信号 |
+
+例如 Full FT 和 LoRA 都可以执行 SFT；LoRA 和 QLoRA 也都可以继续执行 DPO。
+前者回答“训练哪些参数”，后者回答“使用什么损失和数据训练”。
 
 ## 14. 推荐排错顺序
 
