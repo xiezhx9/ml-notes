@@ -157,7 +157,7 @@ text = b"".join(tokens).decode("utf-8")
 因此 roundtrip 应满足：
 
 $$
-\operatorname{decode}(\operatorname{encode}(x))=x
+\mathrm{decode}(\mathrm{encode}(x))=x
 $$
 
 ## 8. 空格算不算字符

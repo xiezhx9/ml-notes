@@ -157,7 +157,7 @@ $$
 如果把所有行向量转成列向量后再整体展平，则可以构造一个更大的分块对角矩阵：
 
 $$
-\mathcal R=\operatorname{diag}(R_0,R_1,\ldots,R_{T-1})
+\mathcal R=\mathrm{diag}(R_0,R_1,\ldots,R_{T-1})
 $$
 
 此时整个 RoPE 仍是线性变换，但 $\mathcal R$ 的形状是 $(Td_h)\times(Td_h)$，它不是能直接与原始 $[T,d_h]$ 张量相乘的统一 $d_h\times d_h$ 矩阵。
@@ -192,8 +192,8 @@ $$
 Attention：
 
 $$
-\operatorname{Attention}(Q,K,V)
-=\operatorname{softmax}\left(\frac{QK^T}{\sqrt{d_h}}\right)V
+\mathrm{Attention}(Q,K,V)
+=\mathrm{softmax}\left(\frac{QK^T}{\sqrt{d_h}}\right)V
 $$
 
 Q/K 决定“关注谁”，所以位置关系需要影响 Q/K 的匹配分数。V 表示被取出的内容，不负责匹配，无需旋转。

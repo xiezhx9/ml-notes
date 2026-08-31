@@ -70,7 +70,7 @@ $$
 每个 token 独立通过同一组前馈层：
 
 $$
-\operatorname{FFN}(x)=\operatorname{GELU}(xW_1+b_1)W_2+b_2
+\mathrm{FFN}(x)=\mathrm{GELU}(xW_1+b_1)W_2+b_2
 $$
 
 形状：
@@ -84,7 +84,7 @@ $$
 对第 $b$ 个样本、第 $t$ 个 token，FFN 可以单独写成：
 
 $$
-y_{b,t}=\operatorname{GELU}(x_{b,t}W_1+b_1)W_2+b_2
+y_{b,t}=\mathrm{GELU}(x_{b,t}W_1+b_1)W_2+b_2
 $$
 
 右侧没有任何其他位置 $x_{b,s}$，所以当 $s\ne t$ 时：
@@ -98,7 +98,7 @@ $$
 | 模块 | 混合方向 | 公式中的关键操作 |
 |---|---|---|
 | Attention | token mixing | $z_t=\sum_s\alpha_{t,s}v_s$ |
-| FFN | channel mixing | $x_tW_1\rightarrow\operatorname{GELU}\rightarrow W_2$ |
+| FFN | channel mixing | $x_tW_1\rightarrow\mathrm{GELU}\rightarrow W_2$ |
 
 例如两个 token 为 `[1,2]` 和 `[10,20]`，直接经过 FFN 时它们分别与 $W_1$ 相乘；修改第二个 token 不会改变第一个 token 的 FFN 输出。
 
@@ -110,7 +110,7 @@ $$
 为什么 GELU：
 
 $$
-\operatorname{GELU}(x)=x\Phi(x)
+\mathrm{GELU}(x)=x\Phi(x)
 $$
 
 它平滑调节输入保留程度，不像 ReLU 在 0 处硬截断，是 Transformer 常用激活函数。
@@ -120,11 +120,11 @@ $$
 数学公式：
 
 $$
-U=X+\operatorname{CausalMHA}(\operatorname{LN}_1(X))
+U=X+\mathrm{CausalMHA}(\mathrm{LN}_1(X))
 $$
 
 $$
-Y=U+\operatorname{FFN}(\operatorname{LN}_2(U))
+Y=U+\mathrm{FFN}(\mathrm{LN}_2(U))
 $$
 
 代码骨架：
@@ -243,7 +243,7 @@ $$
 ### Temperature
 
 $$
-p_i=\operatorname{softmax}(z_i/\tau)
+p_i=\mathrm{softmax}(z_i/\tau)
 $$
 
 低温更确定，高温更多样。

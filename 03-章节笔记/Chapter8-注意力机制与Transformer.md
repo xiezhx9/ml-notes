@@ -22,7 +22,7 @@ aliases:
 传统 RNN/LSTM 按时间顺序处理 token：
 
 $$
-h_t=\operatorname{LSTMCell}(x_t,h_{t-1},c_{t-1})
+h_t=\mathrm{LSTMCell}(x_t,h_{t-1},c_{t-1})
 $$
 
 虽然 LSTM 用记忆状态 $c_t$ 缓解了长期依赖问题，但仍有两个主要限制：
@@ -127,9 +127,9 @@ Q、K、V 的维度不是数学上必须与 $X$ 相同，而是常见的工程�
 ### 4.1 完整公式
 
 $$
-\operatorname{Attention}(Q,K,V)
+\mathrm{Attention}(Q,K,V)
 =
-\operatorname{softmax}\left(
+\mathrm{softmax}\left(
 \frac{QK^\top}{\sqrt{d_k}}+M
 \right)V
 $$
@@ -181,7 +181,7 @@ $$
 近似有：
 
 $$
-\operatorname{Var}(q^\top k)\approx d_k
+\mathrm{Var}(q^\top k)\approx d_k
 $$
 
 因此其标准差约为：
@@ -193,7 +193,7 @@ $$
 除以 $\sqrt{d_k}$ 后：
 
 $$
-\operatorname{Var}\left(
+\mathrm{Var}\left(
 \frac{q^\top k}{\sqrt{d_k}}
 \right)\approx1
 $$
@@ -409,9 +409,9 @@ output = self.Wo(context)
 多头只是把不同 head 的结果拼接起来。输出投影：
 
 $$
-\operatorname{MHA}(X)
+\mathrm{MHA}(X)
 =
-\operatorname{Concat}(head_1,\ldots,head_H)W_O
+\mathrm{Concat}(head_1,\ldots,head_H)W_O
 $$
 
 允许模型重新混合各个 head 的信息，并把输出映射回统一的 $D$ 维特征空间，方便残差相加。
@@ -445,7 +445,7 @@ $$
 位置编码通常在进入第一个 Transformer Block 之前加入：
 
 $$
-X_0=\operatorname{Embedding}(input\_ids)+PE
+X_0=\mathrm{Embedding}(input\_ids)+PE
 $$
 
 `max_len` 用于提前生成足够长的位置编码表，并注册为 buffer：
@@ -470,9 +470,9 @@ $$
 Z
 =
 X+
-\operatorname{Dropout}
+\mathrm{Dropout}
 \left(
-\operatorname{MHA}(\operatorname{LN}(X),M)
+\mathrm{MHA}(\mathrm{LN}(X),M)
 \right)
 $$
 
@@ -480,18 +480,18 @@ $$
 Y
 =
 Z+
-\operatorname{Dropout}
+\mathrm{Dropout}
 \left(
-\operatorname{FFN}(\operatorname{LN}(Z))
+\mathrm{FFN}(\mathrm{LN}(Z))
 \right)
 $$
 
 其中：
 
 $$
-\operatorname{FFN}(x)
+\mathrm{FFN}(x)
 =
-W_2\,\operatorname{GELU}(W_1x+b_1)+b_2
+W_2\,\mathrm{GELU}(W_1x+b_1)+b_2
 $$
 
 ### 8.1 LayerNorm
@@ -695,13 +695,13 @@ $$
 **Post-LN：先做残差加法，再归一化。**
 
 $$
-Y=\operatorname{LN}\left(X+F(X)\right)
+Y=\mathrm{LN}\left(X+F(X)\right)
 $$
 
 **Pre-LN：先归一化，再进入子层，主残差流保持直接相加。**
 
 $$
-Y=X+F\left(\operatorname{LN}(X)\right)
+Y=X+F\left(\mathrm{LN}(X)\right)
 $$
 
 二者最重要的差别不是输出形状，而是梯度传播路径：
@@ -724,11 +724,11 @@ class PreLNSublayer(nn.Module):
 本项目实现的完整 Pre-LN Block 是：
 
 $$
-U=X+\operatorname{Dropout}\left(\operatorname{MHA}(\operatorname{LN}(X))\right)
+U=X+\mathrm{Dropout}\left(\mathrm{MHA}(\mathrm{LN}(X))\right)
 $$
 
 $$
-Y=U+\operatorname{Dropout}\left(\operatorname{FFN}(\operatorname{LN}(U))\right)
+Y=U+\mathrm{Dropout}\left(\mathrm{FFN}(\mathrm{LN}(U))\right)
 $$
 
 ### 13.3 旋转位置编码 RoPE
@@ -824,10 +824,10 @@ Dense Transformer 中，每个 token 都经过同一个 FFN。为了增大模型
 MoE 用 $E$ 个专家 FFN 替换一个 Dense FFN，并增加一个路由器：
 
 $$
-g(x)=\operatorname{softmax}(W_gx)
+g(x)=\mathrm{softmax}(W_gx)
 $$
 
-路由器只保留权重最大的 $k$ 个专家，设其集合为 $S(x)=\operatorname{TopK}(g(x))$，再在被选中的专家之间重新归一化：
+路由器只保留权重最大的 $k$ 个专家，设其集合为 $S(x)=\mathrm{TopK}(g(x))$，再在被选中的专家之间重新归一化：
 
 $$
 \tilde g_e(x)
@@ -840,7 +840,7 @@ $$
 最终输出是：
 
 $$
-\operatorname{MoE}(x)
+\mathrm{MoE}(x)
 =
 \sum_{e\in S(x)}\tilde g_e(x)E_e(x)
 $$
@@ -941,21 +941,21 @@ context = F.scaled_dot_product_attention(
 一个简化的现代 decoder-only Block 可以写成：
 
 $$
-Q,K,V=\operatorname{Project}(\operatorname{Norm}(X))
+Q,K,V=\mathrm{Project}(\mathrm{Norm}(X))
 $$
 
 $$
-Q'=\operatorname{RoPE}(Q),
+Q'=\mathrm{RoPE}(Q),
 \qquad
-K'=\operatorname{RoPE}(K)
+K'=\mathrm{RoPE}(K)
 $$
 
 $$
-U=X+\operatorname{CausalAttention}_{\text{Flash/Window}}(Q',K',V)
+U=X+\mathrm{CausalAttention}_{\text{Flash/Window}}(Q',K',V)
 $$
 
 $$
-Y=U+\operatorname{MoE}(\operatorname{Norm}(U))
+Y=U+\mathrm{MoE}(\mathrm{Norm}(U))
 $$
 
 这里可以看出：
@@ -1063,10 +1063,10 @@ Padding mask 通常只禁止读取 PAD Key。PAD Query 行的影响由 pooling�
 > [!answer] 参考答案
 > 设 Block 输入为 $X$，两条完整公式是：
 > $$
-> U=X+\operatorname{Dropout}(\operatorname{MHA}(\operatorname{LN}(X),\text{mask}))
+> U=X+\mathrm{Dropout}(\mathrm{MHA}(\mathrm{LN}(X),\text{mask}))
 > $$
 > $$
-> Y=U+\operatorname{Dropout}(\operatorname{FFN}(\operatorname{LN}(U)))
+> Y=U+\mathrm{Dropout}(\mathrm{FFN}(\mathrm{LN}(U)))
 > $$
 > “Pre-LN” 指每个子层先做 LayerNorm，再进入 MHA 或 FFN；残差加法发生在子层输出之后。
 

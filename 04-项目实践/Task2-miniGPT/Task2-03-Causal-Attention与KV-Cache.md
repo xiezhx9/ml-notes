@@ -96,7 +96,7 @@ $$
 经过 mask 和 softmax：
 
 $$
-A=\operatorname{softmax}(\operatorname{Mask}(S),\text{dim}=-1)
+A=\mathrm{softmax}(\mathrm{Mask}(S),\text{dim}=-1)
 $$
 
 再聚合 Value：
@@ -115,13 +115,13 @@ $$
 若 Q/K 各维近似独立、均值 0、方差 1，则：
 
 $$
-\operatorname{Var}(q\cdot k)\approx d_h
+\mathrm{Var}(q\cdot k)\approx d_h
 $$
 
 缩放后：
 
 $$
-\operatorname{Var}\left(\frac{q\cdot k}{\sqrt{d_h}}\right)\approx1
+\mathrm{Var}\left(\frac{q\cdot k}{\sqrt{d_h}}\right)\approx1
 $$
 
 这不是要求训练中 Q/K 永远严格服从标准正态，而是控制 score 随维度增长的典型尺度，避免 softmax 过早饱和。
@@ -215,7 +215,7 @@ x = x.transpose(1, 2).reshape(B, T, D)
 最终投影：
 
 $$
-\operatorname{MHA}(X)=\operatorname{Concat}(head_1,\ldots,head_H)W_O
+\mathrm{MHA}(X)=\mathrm{Concat}(head_1,\ldots,head_H)W_O
 $$
 
 $W_O$ 重新混合各 head 信息，并保持输出为 $D$ 维以便与残差相加。
@@ -245,11 +245,11 @@ $$
 新 token 到来时，只计算新 Q/K/V，再沿序列维拼接：
 
 $$
-K_{all}=\operatorname{cat}(K_{past},K_{new},\text{dim}=-2)
+K_{all}=\mathrm{cat}(K_{past},K_{new},\text{dim}=-2)
 $$
 
 $$
-V_{all}=\operatorname{cat}(V_{past},V_{new},\text{dim}=-2)
+V_{all}=\mathrm{cat}(V_{past},V_{new},\text{dim}=-2)
 $$
 
 为什么是 `dim=-2`：最后一维是 `head_dim`，倒数第二维才是 token 序列长度。
@@ -309,7 +309,7 @@ $$
 每层只计算新增的 $q_t,k_t,v_t$，并让新 Query 读取历史 cache：
 
 $$
-o_t=\operatorname{softmax}\left(
+o_t=\mathrm{softmax}\left(
 \frac{q_tK_{all}^T}{\sqrt{d_h}}
 \right)V_{all}
 $$

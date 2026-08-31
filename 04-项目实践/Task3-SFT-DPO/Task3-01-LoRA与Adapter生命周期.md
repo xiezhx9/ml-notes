@@ -132,7 +132,7 @@ $$
 LoRA 常写为：
 
 $$
-\Delta y=\frac{\alpha}{r}B(A(\operatorname{Dropout}(x))).
+\Delta y=\frac{\alpha}{r}B(A(\mathrm{Dropout}(x))).
 $$
 
 它只扰动 LoRA 分支的输入，base 分支保持确定：

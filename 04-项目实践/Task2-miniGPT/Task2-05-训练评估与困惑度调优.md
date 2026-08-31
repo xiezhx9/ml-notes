@@ -208,7 +208,7 @@ $$
 Scheduler 不替代 AdamW，也不产生梯度；它只改变优化器在第 $s$ 步使用的学习率：
 
 $$
-\theta_{s+1}=\theta_s-\eta_s\cdot\operatorname{AdamWUpdate}_s
+\theta_{s+1}=\theta_s-\eta_s\cdot\mathrm{AdamWUpdate}_s
 $$
 
 常见调度策略：
@@ -313,20 +313,20 @@ def evaluate(...):
 总负对数似然：
 
 $$
-\operatorname{NLL}
+\mathrm{NLL}
 =-\sum_{n=1}^{N}\log p(y_n|y_{<n})
 $$
 
 平均 loss：
 
 $$
-\bar L=\frac{\operatorname{NLL}}{N}
+\bar L=\frac{\mathrm{NLL}}{N}
 $$
 
 困惑度：
 
 $$
-\operatorname{PPL}=e^{\bar L}
+\mathrm{PPL}=e^{\bar L}
 $$
 
 直觉上，它是模型每一步面对的“有效候选数量”。越低越好，但只能在同一 tokenizer、数据和评估协议下比较。

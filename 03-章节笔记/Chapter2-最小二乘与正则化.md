@@ -166,7 +166,7 @@ $$
 均方误差：
 
 $$
-\operatorname{MSE}=\frac{35}{3}\approx11.67
+\mathrm{MSE}=\frac{35}{3}\approx11.67
 $$
 
 前面的 $1/2$ 只是为了求导时抵消平方产生的系数 2，不改变最优参数。
