@@ -37,6 +37,12 @@
 - [Task 3.3：DPO 偏好优化](./04-项目实践/Task3-SFT-DPO/Task3-03-DPO偏好优化.md)
 - [Task 3.4：训练工程与故障排查](./04-项目实践/Task3-SFT-DPO/Task3-04-训练工程与故障排查.md)
 - [Task 3.5：S1-S5 实验复盘](./04-项目实践/Task3-SFT-DPO/Task3-05-S1-S5实验复盘.md)
+- [Task 4：RAG 检索增强生成](./04-项目实践/Task4-RAG/Task4-RAG学习索引.md)
+- [Task 4.1：Chunking 与 BGE Embedding](./04-项目实践/Task4-RAG/Task4-01-Chunking与BGE-Embedding.md)
+- [Task 4.2：FAISS 检索与 RAG 评估](./04-项目实践/Task4-RAG/Task4-02-FAISS检索与RAG评估.md)
+- [Task 4.3：Reranker 与 Tokenizer 模板](./04-项目实践/Task4-RAG/Task4-03-Reranker与Tokenizer模板.md)
+- [Task 4.4：RAG 生成与 Query 增强](./04-项目实践/Task4-RAG/Task4-04-RAG生成与Query增强.md)
+- [Task 4.5：完整数据流与实验复盘](./04-项目实践/Task4-RAG/Task4-05-完整数据流与实验复盘.md)
 
 ### 附件
 
