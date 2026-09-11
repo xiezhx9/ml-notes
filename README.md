@@ -43,6 +43,11 @@
 - [Task 4.3：Reranker 与 Tokenizer 模板](./04-项目实践/Task4-RAG/Task4-03-Reranker与Tokenizer模板.md)
 - [Task 4.4：RAG 生成与 Query 增强](./04-项目实践/Task4-RAG/Task4-04-RAG生成与Query增强.md)
 - [Task 4.5：完整数据流与实验复盘](./04-项目实践/Task4-RAG/Task4-05-完整数据流与实验复盘.md)
+- [Task 5：Tool Agent 与 ReAct 学习索引](./04-项目实践/Task5-Tool-Agent/Task5-Tool-Agent学习索引.md)
+- [Task 5.1：ReAct 循环与消息协议](./04-项目实践/Task5-Tool-Agent/Task5-01-ReAct循环与消息协议.md)
+- [Task 5.2：工具 Schema、路由与安全边界](./04-项目实践/Task5-Tool-Agent/Task5-02-工具Schema路由与安全边界.md)
+- [Task 5.3：评测设计与实验复盘](./04-项目实践/Task5-Tool-Agent/Task5-03-评测设计与实验复盘.md)
+- [Task 5.4：现代 Agent 优化与工程实践](./04-项目实践/Task5-Tool-Agent/Task5-04-现代Agent优化与工程实践.md)
 
 ### 附件
 

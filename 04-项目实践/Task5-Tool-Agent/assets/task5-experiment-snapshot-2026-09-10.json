@@ -1,0 +1,936 @@
+{
+  "review_date": "2026-09-10",
+  "note": "Summary of existing reports; no model runs or rescoring performed.",
+  "repository": "https://github.com/xiezhx9/react-tool-agent-from-scratch",
+  "published_commit": "f757319006abedf4e1c4ae8a30b7dc639aba48e6",
+  "reports": [
+    {
+      "experiment": "s1_qwen_agent_comparison",
+      "generated_at": "2026-09-10T10:20:29.403255+00:00",
+      "config": {
+        "tasks_file": "tasks.json",
+        "repetitions": 3,
+        "model": "deepseek-v4-flash",
+        "base_url": "https://api.deepseek.com",
+        "temperature": 0,
+        "max_steps": 8,
+        "request_timeout_seconds": 60,
+        "max_retries": 5,
+        "seed": 42
+      },
+      "task_count": 10,
+      "repetitions": 3,
+      "sample_count": 60,
+      "duration_seconds": 244.007,
+      "summary": {
+        "qwen_agent": {
+          "variant": {
+            "name": "qwen_agent",
+            "framework": "Qwen-Agent Assistant",
+            "calling_protocol": "native_tool_calls",
+            "system_prompt_chars": 267
+          },
+          "run_count": 3,
+          "sample_count": 30,
+          "duration_seconds": 132.386,
+          "metrics": {
+            "answer_success_count": 30,
+            "answer_success_rate": 1,
+            "expected_tool_coverage_count": 30,
+            "expected_tool_coverage_rate": 1,
+            "exact_tool_selection_count": 26,
+            "exact_tool_selection_rate": 0.867,
+            "joint_success_count": 30,
+            "joint_success_rate": 1,
+            "direct_answer_count": 0,
+            "direct_answer_rate": 0,
+            "exception_count": 0,
+            "total_steps": 56,
+            "total_tool_calls": 56,
+            "average_steps": 1.867,
+            "average_tool_calls": 1.867,
+            "average_duration_seconds": 4.413
+          }
+        },
+        "handwritten_react": {
+          "variant": {
+            "name": "handwritten_react",
+            "framework": "project ReActAgent",
+            "calling_protocol": "text_react",
+            "system_prompt_chars": 1553
+          },
+          "run_count": 3,
+          "sample_count": 30,
+          "duration_seconds": 111.621,
+          "metrics": {
+            "answer_success_count": 29,
+            "answer_success_rate": 0.967,
+            "expected_tool_coverage_count": 27,
+            "expected_tool_coverage_rate": 0.9,
+            "exact_tool_selection_count": 27,
+            "exact_tool_selection_rate": 0.9,
+            "joint_success_count": 27,
+            "joint_success_rate": 0.9,
+            "direct_answer_count": 2,
+            "direct_answer_rate": 0.067,
+            "exception_count": 0,
+            "total_steps": 36,
+            "total_tool_calls": 36,
+            "average_steps": 1.2,
+            "average_tool_calls": 1.2,
+            "average_duration_seconds": 3.721
+          }
+        }
+      },
+      "metrics": null,
+      "comparisons": [
+        {
+          "name": "qwen_agent_vs_handwritten_react",
+          "control": "handwritten_react",
+          "treatment": "qwen_agent",
+          "changed_variable": "agent orchestration framework and calling protocol",
+          "deltas": {
+            "answer_success_rate": 0.033,
+            "expected_tool_coverage_rate": 0.1,
+            "exact_tool_selection_rate": -0.033,
+            "joint_success_rate": 0.1,
+            "direct_answer_rate": -0.067,
+            "average_steps": 0.667,
+            "average_tool_calls": 0.667,
+            "average_duration_seconds": 0.692
+          }
+        }
+      ],
+      "task_grading_variants": [
+        {
+          "id": 2,
+          "expected_tools": [
+            "python_sandbox"
+          ],
+          "expected_answer_contains": [
+            "1060"
+          ]
+        },
+        {
+          "id": 5,
+          "expected_tools": [
+            "wiki",
+            "calculator"
+          ],
+          "expected_answer_contains": [
+            "1947",
+            [
+              "78",
+              "79"
+            ]
+          ]
+        },
+        {
+          "id": 9,
+          "expected_tools": [
+            "wiki",
+            "calculator"
+          ],
+          "expected_answer_contains": [
+            "2017",
+            "9"
+          ]
+        },
+        {
+          "id": 1,
+          "expected_tools": [
+            "calculator"
+          ],
+          "expected_answer_contains": [
+            "456831",
+            [
+              "6位",
+              "6 位",
+              "六位",
+              "6 digits",
+              "位数是 6",
+              "位数为 6",
+              "6 位数字",
+              "六位数"
+            ]
+          ]
+        },
+        {
+          "id": 6,
+          "expected_tools": [
+            "python_sandbox"
+          ],
+          "expected_answer_contains": [
+            "level",
+            "True",
+            "world",
+            "False"
+          ]
+        },
+        {
+          "id": 7,
+          "expected_tools": [
+            "file_search"
+          ],
+          "expected_answer_contains": [
+            "todo_note.md"
+          ]
+        },
+        {
+          "id": 10,
+          "expected_tools": [
+            "file_search"
+          ],
+          "expected_answer_contains": [
+            "任务五",
+            "本地文件检索测试文件"
+          ]
+        },
+        {
+          "id": 3,
+          "expected_tools": [
+            "file_search"
+          ],
+          "expected_answer_contains": [
+            [
+              "2",
+              "两"
+            ]
+          ]
+        },
+        {
+          "id": 8,
+          "expected_tools": [
+            "calculator",
+            "python_sandbox"
+          ],
+          "expected_answer_contains": [
+            [
+              "45.011110",
+              "45.01111"
+            ]
+          ]
+        },
+        {
+          "id": 4,
+          "expected_tools": [
+            "wiki"
+          ],
+          "expected_answer_contains": [
+            [
+              "Turing",
+              "图灵"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "experiment": "s2_model_size_comparison",
+      "generated_at": "2026-09-10T03:16:15.332105+00:00",
+      "config": {
+        "tasks_file": "tasks.json",
+        "repetitions": 3,
+        "temperature": 0,
+        "max_steps": 8,
+        "request_timeout_seconds": 60,
+        "max_retries": 5,
+        "seed": 42
+      },
+      "task_count": 10,
+      "repetitions": 3,
+      "sample_count": 90,
+      "duration_seconds": 477.703,
+      "summary": {
+        "8B": {
+          "variant": {
+            "name": "8B",
+            "parameter_billions": 8,
+            "model": "xop3qwen8b",
+            "base_url": "https://maas-api.cn-huabei-1.xf-yun.com/v2",
+            "system_prompt_chars": 1553
+          },
+          "run_count": 3,
+          "sample_count": 30,
+          "duration_seconds": 236.963,
+          "metrics": {
+            "answer_success_count": 22,
+            "answer_success_rate": 0.733,
+            "expected_tool_coverage_count": 27,
+            "expected_tool_coverage_rate": 0.9,
+            "exact_tool_selection_count": 24,
+            "exact_tool_selection_rate": 0.8,
+            "joint_success_count": 19,
+            "joint_success_rate": 0.633,
+            "direct_answer_count": 0,
+            "direct_answer_rate": 0,
+            "exception_count": 0,
+            "total_steps": 81,
+            "total_tool_calls": 73,
+            "average_steps": 2.7,
+            "average_tool_calls": 2.433,
+            "average_duration_seconds": 7.899
+          }
+        },
+        "0.6B": {
+          "variant": {
+            "name": "0.6B",
+            "parameter_billions": 0.6,
+            "model": "xop3qwen0b6",
+            "base_url": "https://maas-api.cn-huabei-1.xf-yun.com/v2",
+            "system_prompt_chars": 1553
+          },
+          "run_count": 3,
+          "sample_count": 30,
+          "duration_seconds": 51.461,
+          "metrics": {
+            "answer_success_count": 14,
+            "answer_success_rate": 0.467,
+            "expected_tool_coverage_count": 18,
+            "expected_tool_coverage_rate": 0.6,
+            "exact_tool_selection_count": 18,
+            "exact_tool_selection_rate": 0.6,
+            "joint_success_count": 11,
+            "joint_success_rate": 0.367,
+            "direct_answer_count": 10,
+            "direct_answer_rate": 0.333,
+            "exception_count": 0,
+            "total_steps": 39,
+            "total_tool_calls": 38,
+            "average_steps": 1.3,
+            "average_tool_calls": 1.267,
+            "average_duration_seconds": 1.715
+          }
+        },
+        "14B": {
+          "variant": {
+            "name": "14B",
+            "parameter_billions": 14,
+            "model": "xop3qwen14b",
+            "base_url": "https://maas-api.cn-huabei-1.xf-yun.com/v2",
+            "system_prompt_chars": 1553
+          },
+          "run_count": 3,
+          "sample_count": 30,
+          "duration_seconds": 189.279,
+          "metrics": {
+            "answer_success_count": 26,
+            "answer_success_rate": 0.867,
+            "expected_tool_coverage_count": 27,
+            "expected_tool_coverage_rate": 0.9,
+            "exact_tool_selection_count": 26,
+            "exact_tool_selection_rate": 0.867,
+            "joint_success_count": 23,
+            "joint_success_rate": 0.767,
+            "direct_answer_count": 0,
+            "direct_answer_rate": 0,
+            "exception_count": 0,
+            "total_steps": 40,
+            "total_tool_calls": 40,
+            "average_steps": 1.333,
+            "average_tool_calls": 1.333,
+            "average_duration_seconds": 6.309
+          }
+        }
+      },
+      "metrics": null,
+      "comparisons": [
+        {
+          "name": "8B_vs_0.6B",
+          "control": "0.6B",
+          "treatment": "8B",
+          "changed_variable": "model_size: 0.6B -> 8B",
+          "deltas": {
+            "answer_success_rate": 0.266,
+            "expected_tool_coverage_rate": 0.3,
+            "exact_tool_selection_rate": 0.2,
+            "joint_success_rate": 0.266,
+            "direct_answer_rate": -0.333,
+            "average_steps": 1.4,
+            "average_tool_calls": 1.166,
+            "average_duration_seconds": 6.184
+          }
+        },
+        {
+          "name": "14B_vs_0.6B",
+          "control": "0.6B",
+          "treatment": "14B",
+          "changed_variable": "model_size: 0.6B -> 14B",
+          "deltas": {
+            "answer_success_rate": 0.4,
+            "expected_tool_coverage_rate": 0.3,
+            "exact_tool_selection_rate": 0.267,
+            "joint_success_rate": 0.4,
+            "direct_answer_rate": -0.333,
+            "average_steps": 0.033,
+            "average_tool_calls": 0.066,
+            "average_duration_seconds": 4.594
+          }
+        }
+      ],
+      "task_grading_variants": [
+        {
+          "id": 2,
+          "expected_tools": [
+            "python_sandbox"
+          ],
+          "expected_answer_contains": [
+            "1060"
+          ]
+        },
+        {
+          "id": 5,
+          "expected_tools": [
+            "wiki",
+            "calculator"
+          ],
+          "expected_answer_contains": [
+            "1947",
+            [
+              "78",
+              "79"
+            ]
+          ]
+        },
+        {
+          "id": 9,
+          "expected_tools": [
+            "wiki",
+            "calculator"
+          ],
+          "expected_answer_contains": [
+            "2017",
+            "9"
+          ]
+        },
+        {
+          "id": 1,
+          "expected_tools": [
+            "calculator"
+          ],
+          "expected_answer_contains": [
+            "456831",
+            [
+              "6位",
+              "6 位",
+              "六位",
+              "6 digits"
+            ]
+          ]
+        },
+        {
+          "id": 6,
+          "expected_tools": [
+            "python_sandbox"
+          ],
+          "expected_answer_contains": [
+            "level",
+            "True",
+            "world",
+            "False"
+          ]
+        },
+        {
+          "id": 7,
+          "expected_tools": [
+            "file_search"
+          ],
+          "expected_answer_contains": [
+            "todo_note.md"
+          ]
+        },
+        {
+          "id": 10,
+          "expected_tools": [
+            "file_search"
+          ],
+          "expected_answer_contains": [
+            "任务五",
+            "本地文件检索测试文件"
+          ]
+        },
+        {
+          "id": 3,
+          "expected_tools": [
+            "file_search"
+          ],
+          "expected_answer_contains": [
+            [
+              "2",
+              "两"
+            ]
+          ]
+        },
+        {
+          "id": 8,
+          "expected_tools": [
+            "calculator",
+            "python_sandbox"
+          ],
+          "expected_answer_contains": [
+            [
+              "45.011110",
+              "45.01111"
+            ]
+          ]
+        },
+        {
+          "id": 4,
+          "expected_tools": [
+            "wiki"
+          ],
+          "expected_answer_contains": [
+            [
+              "Turing",
+              "图灵"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "experiment": "s3_prompt_comparison",
+      "generated_at": "2026-09-09T11:10:32.268523+00:00",
+      "config": {
+        "tasks_file": "tasks.json",
+        "repetitions": 3,
+        "model": "deepseek-v4-flash",
+        "base_url": "https://api.deepseek.com",
+        "temperature": 0,
+        "max_steps": 8,
+        "request_timeout_seconds": 60,
+        "seed": 42
+      },
+      "task_count": 10,
+      "repetitions": 3,
+      "sample_count": 90,
+      "duration_seconds": 616.281,
+      "summary": {
+        "no_few_shot": {
+          "variant": {
+            "name": "no_few_shot",
+            "zero_shots": true,
+            "simple_tool": false,
+            "system_prompt_chars": 1382
+          },
+          "run_count": 3,
+          "sample_count": 30,
+          "duration_seconds": 233.319,
+          "metrics": {
+            "answer_success_count": 30,
+            "answer_success_rate": 1,
+            "expected_tool_coverage_count": 25,
+            "expected_tool_coverage_rate": 0.833,
+            "exact_tool_selection_count": 24,
+            "exact_tool_selection_rate": 0.8,
+            "joint_success_count": 25,
+            "joint_success_rate": 0.833,
+            "direct_answer_count": 2,
+            "direct_answer_rate": 0.067,
+            "exception_count": 0,
+            "total_steps": 40,
+            "total_tool_calls": 39,
+            "average_steps": 1.333,
+            "average_tool_calls": 1.3
+          }
+        },
+        "baseline": {
+          "variant": {
+            "name": "baseline",
+            "zero_shots": false,
+            "simple_tool": false,
+            "system_prompt_chars": 1553
+          },
+          "run_count": 3,
+          "sample_count": 30,
+          "duration_seconds": 206.418,
+          "metrics": {
+            "answer_success_count": 30,
+            "answer_success_rate": 1,
+            "expected_tool_coverage_count": 25,
+            "expected_tool_coverage_rate": 0.833,
+            "exact_tool_selection_count": 24,
+            "exact_tool_selection_rate": 0.8,
+            "joint_success_count": 25,
+            "joint_success_rate": 0.833,
+            "direct_answer_count": 1,
+            "direct_answer_rate": 0.033,
+            "exception_count": 0,
+            "total_steps": 42,
+            "total_tool_calls": 37,
+            "average_steps": 1.4,
+            "average_tool_calls": 1.233
+          }
+        },
+        "simple_tools": {
+          "variant": {
+            "name": "simple_tools",
+            "zero_shots": false,
+            "simple_tool": true,
+            "system_prompt_chars": 1521
+          },
+          "run_count": 3,
+          "sample_count": 30,
+          "duration_seconds": 176.544,
+          "metrics": {
+            "answer_success_count": 28,
+            "answer_success_rate": 0.933,
+            "expected_tool_coverage_count": 20,
+            "expected_tool_coverage_rate": 0.667,
+            "exact_tool_selection_count": 20,
+            "exact_tool_selection_rate": 0.667,
+            "joint_success_count": 20,
+            "joint_success_rate": 0.667,
+            "direct_answer_count": 3,
+            "direct_answer_rate": 0.1,
+            "exception_count": 0,
+            "total_steps": 34,
+            "total_tool_calls": 31,
+            "average_steps": 1.133,
+            "average_tool_calls": 1.033
+          }
+        }
+      },
+      "metrics": null,
+      "comparisons": [
+        {
+          "name": "no_few_shot_vs_baseline",
+          "control": "baseline",
+          "treatment": "no_few_shot",
+          "changed_variable": "zero_shots: false -> true",
+          "deltas": {
+            "answer_success_rate": 0,
+            "expected_tool_coverage_rate": 0,
+            "exact_tool_selection_rate": 0,
+            "joint_success_rate": 0,
+            "direct_answer_rate": 0.034,
+            "average_steps": -0.067,
+            "average_tool_calls": 0.067
+          }
+        },
+        {
+          "name": "simple_tools_vs_baseline",
+          "control": "baseline",
+          "treatment": "simple_tools",
+          "changed_variable": "simple_tool: false -> true",
+          "deltas": {
+            "answer_success_rate": -0.067,
+            "expected_tool_coverage_rate": -0.166,
+            "exact_tool_selection_rate": -0.133,
+            "joint_success_rate": -0.166,
+            "direct_answer_rate": 0.067,
+            "average_steps": -0.267,
+            "average_tool_calls": -0.2
+          }
+        }
+      ],
+      "task_grading_variants": [
+        {
+          "id": 2,
+          "expected_tools": [
+            "python_sandbox"
+          ],
+          "expected_answer_contains": [
+            "1060"
+          ]
+        },
+        {
+          "id": 5,
+          "expected_tools": [
+            "wiki",
+            "calculator"
+          ],
+          "expected_answer_contains": [
+            "1947",
+            [
+              "78",
+              "79"
+            ]
+          ]
+        },
+        {
+          "id": 9,
+          "expected_tools": [
+            "wiki",
+            "calculator"
+          ],
+          "expected_answer_contains": [
+            "2017",
+            "9"
+          ]
+        },
+        {
+          "id": 1,
+          "expected_tools": [
+            "calculator"
+          ],
+          "expected_answer_contains": [
+            "456831",
+            [
+              "6位",
+              "6 位",
+              "六位",
+              "6 digits"
+            ]
+          ]
+        },
+        {
+          "id": 6,
+          "expected_tools": [
+            "python_sandbox"
+          ],
+          "expected_answer_contains": [
+            "level",
+            "True",
+            "world",
+            "False"
+          ]
+        },
+        {
+          "id": 7,
+          "expected_tools": [
+            "file_search"
+          ],
+          "expected_answer_contains": [
+            "todo_note.md"
+          ]
+        },
+        {
+          "id": 10,
+          "expected_tools": [
+            "file_search"
+          ],
+          "expected_answer_contains": [
+            "任务五",
+            "本地文件检索测试文件"
+          ]
+        },
+        {
+          "id": 3,
+          "expected_tools": [
+            "file_search"
+          ],
+          "expected_answer_contains": [
+            [
+              "2",
+              "两"
+            ]
+          ]
+        },
+        {
+          "id": 8,
+          "expected_tools": [
+            "calculator",
+            "python_sandbox"
+          ],
+          "expected_answer_contains": [
+            [
+              "45.011110",
+              "45.01111"
+            ]
+          ]
+        },
+        {
+          "id": 4,
+          "expected_tools": [
+            "wiki"
+          ],
+          "expected_answer_contains": [
+            [
+              "Turing",
+              "图灵"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "experiment": "s4_error_recovery",
+      "generated_at": "2026-09-09T01:42:16.647248+00:00",
+      "config": {
+        "tasks_file": "tasks.json",
+        "repetitions": 3,
+        "model": "deepseek-v4-flash",
+        "base_url": "https://api.deepseek.com",
+        "temperature": 0,
+        "max_steps": 8,
+        "request_timeout_seconds": 60,
+        "injected_message": "Inject Error: The tool returned no useable result"
+      },
+      "task_count": 10,
+      "repetitions": 3,
+      "sample_count": 30,
+      "duration_seconds": 794.076,
+      "summary": null,
+      "metrics": {
+        "pass": true,
+        "pass_threshold": 0.4,
+        "answer_success_count": 26,
+        "answer_success_rate": 0.867,
+        "injection_count": 22,
+        "injection_rate": 0.733,
+        "recovery_attempt_count": 21,
+        "recovery_attempt_rate_given_injection": 0.955,
+        "recover_count": 20,
+        "recover_rate": 0.667,
+        "recover_rate_given_injection": 0.909,
+        "exception_count": 2
+      },
+      "comparisons": null,
+      "task_grading_variants": [
+        {
+          "id": 2,
+          "expected_tools": [
+            "python_sandbox"
+          ],
+          "expected_answer_contains": [
+            "1060"
+          ]
+        },
+        {
+          "id": 5,
+          "expected_tools": [
+            "wiki",
+            "calculator"
+          ],
+          "expected_answer_contains": [
+            "1947",
+            [
+              "78",
+              "79"
+            ]
+          ]
+        },
+        {
+          "id": 9,
+          "expected_tools": [
+            "wiki",
+            "calculator"
+          ],
+          "expected_answer_contains": [
+            "2017",
+            "9"
+          ]
+        },
+        {
+          "id": 1,
+          "expected_tools": [
+            "calculator"
+          ],
+          "expected_answer_contains": [
+            "456831",
+            [
+              "6位",
+              "6 位",
+              "六位",
+              "6 digits"
+            ]
+          ]
+        },
+        {
+          "id": 6,
+          "expected_tools": [
+            "python_sandbox"
+          ],
+          "expected_answer_contains": [
+            "level",
+            "True",
+            "world",
+            "False"
+          ]
+        },
+        {
+          "id": 7,
+          "expected_tools": [
+            "file_search"
+          ],
+          "expected_answer_contains": [
+            "todo_note.md"
+          ]
+        },
+        {
+          "id": 10,
+          "expected_tools": [
+            "file_search"
+          ],
+          "expected_answer_contains": [
+            "任务五",
+            "本地文件检索测试文件"
+          ]
+        },
+        {
+          "id": 3,
+          "expected_tools": [
+            "file_search"
+          ],
+          "expected_answer_contains": [
+            [
+              "2",
+              "两"
+            ]
+          ]
+        },
+        {
+          "id": 8,
+          "expected_tools": [
+            "calculator",
+            "python_sandbox"
+          ],
+          "expected_answer_contains": [
+            [
+              "45.011110",
+              "45.01111"
+            ]
+          ]
+        },
+        {
+          "id": 4,
+          "expected_tools": [
+            "wiki"
+          ],
+          "expected_answer_contains": [
+            [
+              "Turing",
+              "图灵"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "experiment": "m1_m4_smoke",
+      "results": [
+        {
+          "test": "tools_individual",
+          "pass": true,
+          "results": {
+            "calculator": true,
+            "python_sandbox": true,
+            "file_search": true,
+            "wiki": true
+          },
+          "network_skipped": null
+        },
+        {
+          "test": "multi_tool_success_rate",
+          "pass": true,
+          "rate": 1,
+          "n": 10
+        },
+        {
+          "test": "error_recovery",
+          "pass": true,
+          "rate": 1,
+          "n": 10
+        }
+      ]
+    }
+  ],
+  "local_source_sha256": [
+    "88d8f3a9f6944768283254ddb29c9795925fffcb754b859ef1f2ff6c65bdc6cf  src/agent.py",
+    "1a5b84784d9e7b462e6423e9a1d630de8fcac8e05d17bf26d10eba284b3453e8  src/experiments.py",
+    "658408bf4d7b58dc3b6f1c937c677ff880598cfc4c37e2751168b15a7016c5e8  src/qwen_agent_baseline.py",
+    "e7500ad6582e68c55901a4c10e81ef52a54ecc734b55d0aa76d0d6a09da076e9  eval/run.py",
+    "6d37dce88449f0677941604442ef3f762dc6923bdca5c8af15b5fc33c31cd636  data/tasks.json"
+  ]
+}
