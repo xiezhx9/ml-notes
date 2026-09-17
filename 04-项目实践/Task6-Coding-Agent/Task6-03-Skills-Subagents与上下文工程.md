@@ -168,10 +168,170 @@ Skill 实验中：
 
 Subagent 最适合边界清晰、上下文较重、输出可压缩的子任务。写操作通常应集中到主 Agent，减少并发冲突和责任不清。
 
-## 10. 后续可做的上下文优化
+## 10. 上下文窗口与 Agent 工作记忆
 
-- 用结构化工作记忆保存目标、假设、已读文件、当前 Patch、失败测试和剩余预算；
-- 对早期完整工具输出做 Compaction，但保留路径、行号与结论依据；
+### 10.1 一次请求的上下文包含什么
+
+模型窗口不只包含 Issue，还要容纳：
+
+```text
+System Prompt
++ Skill 正文（如果启用）
++ 用户 Issue
++ Tool Schema
++ 历史 Assistant Tool Calls
++ 历史 Tool Observations
++ 本轮预留输出
+```
+
+基本约束是：
+
+$$
+T_{input}+T_{output\_reserved}\le T_{context}.
+$$
+
+其中，$T_{context}$ 是服务端配置的最大模型长度。当前 Agent 每轮还固定预留 4096 个输出 Token，因此输入不能真的占满整个窗口。
+
+模型本身通常不会在窗口满时自动总结历史。服务端可能：
+
+1. 返回 `context_length_exceeded` 一类 HTTP 400；
+2. 在显式启用时从左侧或右侧机械截断；
+3. 输入尚可接受、但输出达到限制时以 `finish_reason=length` 结束。
+
+vLLM 支持 `truncate_prompt_tokens` 和 `truncation_side`，但机械截断不适合作为 Agent 的主要策略：左截断可能丢失 System Prompt 和 Issue，右截断可能丢失最新 Patch 和测试，任意截断还可能破坏 `assistant(tool_calls) -> tool(tool_call_id)` 配对。
+
+### 10.2 累计 Token 不等于单次上下文
+
+S4 失败样本中：
+
+| 实例 | 报告累计 Input Token | 最后一轮 Input Token | 实际停止原因 |
+|---|---:|---:|---|
+| `astropy__astropy-14182` | 447,213 | 48,642 | `max_tool_calls` |
+| `astropy__astropy-14365` | 412,854 | 36,772 | `max_tool_calls` |
+
+四十多万是各轮请求之和，不是模型一次收到的长度：
+
+$$
+T_{total}=\sum_{i=1}^{n}T_i.
+$$
+
+但因为当前每轮都重发完整历史，$T_i$ 会持续增长，导致累计成本接近二次增长。这两题没有先撞上服务端的硬上限，而是先用完 24 次工具预算；上下文膨胀仍然造成了成本上升、时延增加和注意力稀释。
+
+### 10.3 当前实现的缺口
+
+当前 `messages` 只追加不压缩，下一轮会再次发送旧的 Tool Call 和 Observation。同时：
+
+- `read_file` 一次最多读取 128,000 Bytes，不支持行范围；
+- `search_text` 最多返回 200 条匹配；
+- 命令和测试输出上限为 12,000 字符；
+- 没有 Token 预估、Working Memory、历史 Compaction 或上下文溢出恢复；
+- HTTP 400 不在普通可重试范围，上下文过长会直接结束为 `model_error`。
+
+完整 Trace 适合保存到磁盘供评测与复盘，但不应等同于每一轮都要喂给模型的工作上下文。
+
+### 10.4 上下文管理的优化顺序
+
+#### 1. 局部读取代替整文件读取
+
+将：
+
+```python
+read_file(path)
+```
+
+扩展为：
+
+```python
+read_file(path, start_line=60, end_line=120)
+read_file_around(path, line=71, context_lines=30)
+```
+
+让 `search_text` 先返回行号，再只读命中位置附近。这是当前项目投入产出比最高的优化。
+
+#### 2. 分离完整 Trace 和模型工作上下文
+
+工具的完整输出可保存为 Artifact，模型只接收：
+
+```json
+{
+  "artifact_id": "read-017",
+  "summary": "RST.__init__ 没有透传 header_rows，父类 FixedWidth 已支持",
+  "excerpt": "def __init__(self): ...",
+  "path": "astropy/io/ascii/rst.py",
+  "line": 73
+}
+```
+
+需要时再通过 `artifact_id` 或路径继续读取，而不是在后续每轮重发整个文件。
+
+#### 3. 建立结构化 Working Memory
+
+在输入达到窗口的约 65%–75% 时主动 Compaction，保留：
+
+```text
+System Prompt
++ 原始 Issue
++ 结构化 Working Memory
++ 最近 3–5 轮完整交互
+```
+
+Working Memory 至少应记录：
+
+```text
+已知事实 / 相关文件与行号 / 当前假设
+已做修改 / 当前 Patch / 最新测试证据
+失败尝试 / 环境异常 / 剩余预算 / 下一步
+```
+
+压缩时必须按完整交互组删除，不能只删 Assistant Tool Call 或只留 Tool Result，否则会破坏 Tool Calling 消息协议。
+
+#### 4. 为上下文溢出做一次专用恢复
+
+```text
+收到 context_length_exceeded
+→ 构建 Working Memory
+→ 压缩成对的旧交互
+→ 重新估算 Token
+→ 只重试一次
+```
+
+不能当作普通网络重试，因为原样重发过长 Prompt 永远不会成功。
+
+#### 5. 同时管理工具阶段预算
+
+可将 24 次调用软划分为：
+
+```text
+定位与读取：最多 8 次
+假设与验证：最多 4 次
+修改与纠错：至少预留 6 次
+测试与收尾：至少预留 6 次
+```
+
+连续只读且没有形成 Patch 时，应要求模型总结当前证据、提出最小修复或说明唯一缺失信息，避免像 S4 `14182` 一样把 24 次全部用于搜索。
+
+#### 6. 压缩测试输出并分类失败
+
+模型优先需要：
+
+```text
+失败阶段 / 失败测试名 / 根异常
+断言失败 vs 导入或配置失败
+是否真正执行了业务测试
+完整日志的 Artifact 引用
+```
+
+这能防止 Agent 把本地依赖缺失误当业务 Bug，像 S4 `14365` 一样去修改无关的版本文件。
+
+### 10.5 常见误区
+
+- **更多 KV Cache 不等于上下文无限**：KV Cache 容量影响可服务的序列长度与并发，但不会自动改变服务配置的 `max_model_len`。
+- **Prefix Cache 只优化重复计算**：它可降低相同前缀的延迟，却不减少 Token 数，也不消除无关历史的注意力干扰。
+- **扩大 `max_model_len` 只是推迟失败**：如果 Agent 仍无限堆积原始 Observation，64K 换成 128K 可能只是多浪费一倍 Token。
+- **不能只按字符数估算**：工具 Schema、Chat Template 和特殊 Token 都会计入。应尽量使用实际模型 Tokenizer 或服务端 Tokenize 接口。
+
+### 10.6 其他能力的后续优化
+
 - Skill Match 加入负向条件、冲突处理和 Token 预算；
 - 根据任务复杂度、测试日志长度和跨文件程度决定是否委托；
 - 给 Subagent 返回证据引用，而不仅是自然语言摘要；
@@ -185,6 +345,10 @@ Subagent 最适合边界清晰、上下文较重、输出可压缩的子任务�
 4. 条件委托组更快，为什么不能证明 Subagent 提速？
 5. 强制委托为什么适合实验链路验证，却不一定适合生产？
 6. 什么样的子任务值得委托？
+7. 报告中累计 45 万 Input Token，是否表示模型一次收到了 45 万 Token？
+8. 为什么不应依赖服务端从左侧自动截断 Agent 历史？
+9. 完整 Trace 为什么不应全部保留在模型工作上下文中？
+10. Prefix Cache 和更大 KV Cache 能否替代 Context Compaction？
 
 ### 自测标准答案
 
@@ -205,3 +369,15 @@ Subagent 最适合边界清晰、上下文较重、输出可压缩的子任务�
 
 > [!success]- 标准答案：6. 独立、复杂且可压缩
 > 适合需要大量专门上下文、与主修改链路耦合较低、结果能用摘要和证据表达的子任务；简单或强依赖任务通常直接处理更省成本。
+
+> [!success]- 标准答案：7. 不是，这是多轮请求之和
+> 每轮都有自己的 Input Token，累计值是它们之和。S4 `14182` 最后一轮约 48,642，累计才是 447,213。
+
+> [!success]- 标准答案：8. 可能删掉任务约束并破坏工具协议
+> 左截断可能丢失 System Prompt、Issue 和早期关键证据；不按完整交互组处理还可能留下孤立 Tool Result。应由 Agent 保留结构化记忆后主动压缩。
+
+> [!success]- 标准答案：9. 评测证据与当前决策信息的需求不同
+> 完整 Trace 适合审计和复现；模型只需要当前目标、关键文件片段、Patch、最新测试和下一步。分离两者能降低重复 Token 和无关干扰。
+
+> [!success]- 标准答案：10. 不能
+> Prefix Cache 只减少重复前缀的计算时间，不减少 Token；更大 KV Cache 不会自动扩大 `max_model_len`。它们都不会替代对旧 Observation 的结构化压缩。
