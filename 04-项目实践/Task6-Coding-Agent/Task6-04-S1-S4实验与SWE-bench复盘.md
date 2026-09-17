@@ -103,7 +103,52 @@ $$
 
 只截一张 `nvidia-smi` 图会错误得出“量化没有节省显存”。
 
-### 2.4 S1 的正确结论
+### 2.4 多用户怎样共享 KV Cache 显存
+
+不同用户或并发请求确实需要各自的**逻辑 KV Cache**，因为每条 Sequence 的历史 Token 不同。推理框架不会为每个用户预先划一块固定的大显存，而是把预留空间切成固定大小的物理 Block：
+
+```mermaid
+flowchart LR
+    P["共享 KV Block Pool"] --> A["Sequence A 的 Block Table"]
+    P --> B["Sequence B 的 Block Table"]
+    P --> C["Sequence C 的 Block Table"]
+    A --> KA["A 的逻辑上下文"]
+    B --> KB["B 的逻辑上下文"]
+    C --> KC["C 的逻辑上下文"]
+```
+
+每条 Sequence 保存自己的 Block Table，Attention Kernel 只读取该 Sequence 映射到的 KV Block。不同用户可以共享同一个物理显存池，但不会混用逻辑上下文。
+
+第 $i$ 条活跃 Sequence 的 KV Cache 大小近似为：
+
+$$
+M_{KV,i}\approx 2\times L\times T_i\times H_{kv}\times D_h\times S,
+$$
+
+其中：
+
+- $2$ 表示 Key 和 Value；
+- $L$ 是 Transformer 层数；
+- $T_i$ 是该 Sequence 当前缓存的 Token 数；
+- $H_{kv}$ 是 KV Head 数；
+- $D_h$ 是每个 Head 的维度；
+- $S$ 是每个缓存元素的字节数。
+
+所有活跃请求必须共同满足：
+
+$$
+\sum_i M_{KV,i}\le M_{KV,pool}.
+$$
+
+因此可服务的并发数不是固定值：上下文越短，可同时容纳的请求越多；上下文和输出越长，每条请求占用的 Block 越多。
+
+vLLM 的 Continuous Batching 会把多个活跃 Sequence 的“下一个 Token”动态组成 Batch。某条请求完成后，它的 Block 被释放回池中，供新请求复用。S1 中的 `15.65 GiB` 是 AWQ 条件下**预留的共享 KV Block Pool 容量**，不是一个用户实际占用了 15.65 GiB。
+
+多数 OpenAI-compatible API 在请求之间是无状态的。请求结束后 KV Block 可以释放；下一轮聊天由客户端重新发送 Messages，服务端重新 Prefill。若相同 Token 前缀命中 Prefix Cache，后端可以共享只读前缀 Block，再为差异部分分配新 Block。Prefix Cache 是计算复用，不是用户会话数据库，也不能替代上下文长度管理。
+
+AWQ 默认没有改变公式中的 $S$，因为 KV Cache 仍通常使用 FP16/BF16。要减少每个 Token 的缓存占用，需要后端额外支持 FP8/INT8 KV Cache；降低 `max_model_len`、`max_num_seqs` 或并发量则是减少所需 Block 数量。
+
+### 2.5 S1 的正确结论
 
 - 本轮 FP16 成功率更高，优势来自一个多文件任务；
 - AWQ 模型权重更小、平均端到端耗时更低，并释放更多 KV Cache 空间；
@@ -316,11 +361,12 @@ official_resolved = true
 1. S1 为什么固定 Tokenizer？Tokenizer 会被 AWQ 量化吗？
 2. 为什么三轮完全一致仍不能把 S1 当作 15 个独立任务？
 3. 为什么 `nvidia-smi` 总占用接近不能证明量化无效？
-4. 强制 Subagent 主 Agent 步数更少，为什么总成本反而更高？
-5. Skill Match Rate 80% 能证明 Skill 有效吗？
-6. S4 中 `local_tests_passed=false` 与 `official_resolved=true` 为什么能同时成立？
-7. 1/1 和 1/3 分别回答什么问题？
-8. S4 当前最主要的系统瓶颈是什么？
+4. 多用户为什么需要多套逻辑 KV Cache，却可以共享一个物理显存池？
+5. 强制 Subagent 主 Agent 步数更少，为什么总成本反而更高？
+6. Skill Match Rate 80% 能证明 Skill 有效吗？
+7. S4 中 `local_tests_passed=false` 与 `official_resolved=true` 为什么能同时成立？
+8. 1/1 和 1/3 分别回答什么问题？
+9. S4 当前最主要的系统瓶颈是什么？
 
 ### 自测标准答案
 
@@ -333,17 +379,20 @@ official_resolved = true
 > [!success]- 标准答案：3. vLLM 会重新分配节省空间
 > AWQ 模型权重只占 5.2 GiB，但 90% 显存利用率让更多空间进入 KV Cache，所以总占用仍接近。应分别看模型加载显存、KV Cache 和总占用。
 
-> [!success]- 标准答案：4. 子代理也在调用模型
+> [!success]- 标准答案：4. 逻辑隔离，物理分页
+> 每条 Sequence 有独立 Block Table，Attention 只读取它映射到的 Block；底层 Block 来自共享池，按上下文长度动态分配，请求结束后归还，因此不需要按用户预留固定大块显存。
+
+> [!success]- 标准答案：5. 子代理也在调用模型
 > 主 Agent 步数下降只表示工作被转移。总成本还包括子代理输入输出、工具循环、委托和结果汇总，本轮总 Token 增加约 67.3%。
 
-> [!success]- 标准答案：5. 不能
+> [!success]- 标准答案：6. 不能
 > Match Rate 只证明路由器选中了 Skill，不证明模型使用了内容或任务因此改善。本轮成功率不变且 Token 增加，需要更难任务和流程指标。
 
-> [!success]- 标准答案：6. 两种证据来自不同环境
+> [!success]- 标准答案：7. 两种证据来自不同环境
 > 本地缺少 `hypothesis`，没有取得绿色测试；官方 Docker 环境依赖完整，Patch 最终通过目标和回归测试。正式成绩以官方 Harness 为准，同时保留本地基础设施问题。
 
-> [!success]- 标准答案：7. 候选质量与端到端成绩
+> [!success]- 标准答案：8. 候选质量与端到端成绩
 > 1/1 表示唯一提交候选通过；1/3 表示全部三个分配实例中成功一个。完整实验和简历应使用 1/3。
 
-> [!success]- 标准答案：8. 候选生成和上下文效率
+> [!success]- 标准答案：9. 候选生成和上下文效率
 > 两个失败实例在 24 次工具调用与四十多万 Token 后仍为空 Patch。应优先改善仓库发现、上下文压缩、无进展检测和阶段预算，而不是只优化已生成 Patch 的官方通过率。
