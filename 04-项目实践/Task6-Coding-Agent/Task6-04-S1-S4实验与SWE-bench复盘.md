@@ -503,15 +503,25 @@ official_resolved = true
 ## 8. 自测
 
 1. S1 为什么固定 Tokenizer？Tokenizer 会被 AWQ 量化吗？
+	1.  两个条件必须接收相同 Token ID 和 Chat Template。Tokenizer 是离散切词与映射规则，通常没有 FP16/INT4 权重；量化针对模型权重，Embedding、LM Head 和 KV Cache是否量化要看单独配置。
 2. 为什么三轮完全一致仍不能把 S1 当作 15 个独立任务？
+	1. 重复运行不增加题目多样性
 3. 为什么 `nvidia-smi` 总占用接近不能证明量化无效？
+	1. 占用接近可能是kv cache更多
 4. 多用户为什么需要多套逻辑 KV Cache，却可以共享一个物理显存池？
+	1. vllm的paged attention 每个用户的kv cache不一样，可以分配多套cache
 5. 强制 Subagent 主 Agent 步数更少，为什么总成本反而更高？
+	1. subagent本身需要步数
 6. Skill Match Rate 80% 能证明 Skill 有效吗？
+	1. 只能说明匹配比较容易，有效要判断使用后的结果
 7. S4 中 `local_tests_passed=false` 与 `official_resolved=true` 为什么能同时成立？
+	1. 环境不一致，local情况下部分依赖不满足
 8. 1/1 和 1/3 分别回答什么问题？
+	1. 1/1 表示唯一提交候选通过；1/3 表示全部三个分配实例中成功一个。完整实验和简历应使用 1/3。
 9. S4 当前最主要的系统瓶颈是什么？
+	1. 两个失败实例在 24 次工具调用与四十多万 Token 后仍为空 Patch。应优先改善仓库发现、上下文压缩、无进展检测和阶段预算，而不是只优化已生成 Patch 的官方通过率。
 10. KV Cache 既然能量化，为什么不总是使用 INT4/INT2？
+	1. KV 是在线产生的激活值，分布会随层、Head、Token 和请求变化；K 的误差会影响 Attention Score，V 的误差会影响取回内容。更低比特还需更细粒度 Scale、反量化与专用 Kernel。因此它可以节省显存并提升并发容量，但不能保证质量无损或单请求延迟更低。
 
 ### 自测标准答案
 

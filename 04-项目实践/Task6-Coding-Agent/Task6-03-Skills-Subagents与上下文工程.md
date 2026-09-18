@@ -425,18 +425,31 @@ Working Memory 至少应记录：
 ## 11. 自测
 
 1. Skill 与 Tool 的本质区别是什么？
+	1. Tool 是有 Schema 的可执行动作；Skill 是告诉模型何时以及如何组织动作的说明。Skill 最终仍需调用 Tool 或生成结果。
 2. 为什么 `list_skills()` 不应直接返回全部正文？
+	1. 会过多占用system prompt
 3. Subagent 的“独立上下文”具体体现在哪里？
+	1. message是传入的task 和 context，context只包含部分历史
 4. 条件委托组更快，为什么不能证明 Subagent 提速？
+	1. 还需要算上构建subagent的成本
 5. 强制委托为什么适合实验链路验证，却不一定适合生产？
+	1. 最优路由不一定是subagent
 6. 什么样的子任务值得委托？
+	1. 复杂耗时长可并行
 7. 报告中累计 45 万 Input Token，是否表示模型一次收到了 45 万 Token？
+	1. 多次调用的总和
 8. 为什么不应依赖服务端从左侧自动截断 Agent 历史？
+	1. 左截断可能丢失最开始的system prompt，影响后续行为
 9. 完整 Trace 为什么不应全部保留在模型工作上下文中？
+	1. 完整 Trace 适合审计和复现；模型只需要当前目标、关键文件片段、Patch、最新测试和下一步。分离两者能降低重复 Token 和无关干扰。
 10. Prefix Cache 和更大 KV Cache 能否替代 Context Compaction？
+	1. 不行Cache没办法增加上下文长度的上限，只是加速运算
 11. Codex 的隐式 Skill 匹配目前由谁完成最终判断？
+	1. 远端模型来做
 12. Codex 源码已有 BM25 等选择器，为什么不能说它们已接管生产路由？
+	1. 这些选择器会产生候选排名并记录命中、排名和成本，但不改变模型看到的 Catalog。它们的预测要与模型真正读取或执行的 Skill 比较，暂未成为强制路由。这些选择器会产生候选排名并记录命中、排名和成本，但不改变模型看到的 Catalog。它们的预测要与模型真正读取或执行的 Skill 比较，暂未成为强制路由。
 13. 如果 Task6 要向 Codex 靠拢，SkillLoader 最重要的结构变化是什么？
+	1. Loader 先提供紧凑 Catalog，显式点名做精确匹配，Skill 很多时才用廉价选择器召回候选，再由模型通过 `load_skill` 加载正文。同时保留 Tool 权限与 Evaluator 的宿主强制边界。
 
 ### 自测标准答案
 
