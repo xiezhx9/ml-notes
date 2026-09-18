@@ -1,7 +1,7 @@
 ---
 tags: [LLM, Coding-Agent, Quantization, Subagents, Skills, SWE-bench, Evaluation]
 aliases: [Task6 实验复盘, Task6 S1 S2 S3 S4, SWE-bench 验收]
-updated: 2026-09-17
+updated: 2026-09-18
 ---
 
 # Task 6.4：S1–S4 实验与 SWE-bench 复盘
@@ -238,17 +238,131 @@ SWE-bench 每个实例指定：
 
 候选 Patch 必须建立在精确历史状态上。使用仓库最新版本、脏工作区或错误 Commit，即使本地看似修复，也不能作为正式结果。
 
-### 5.2 两阶段流程
+### 5.2 从 Issue 到官方 Resolved 的完整链路
 
 ```mermaid
-flowchart TD
-    I["3 个安全输入：instance/repo/base/problem"] --> C["检查本地镜像与 Git 对象完整性"]
-    C --> D["临时 shared clone + detached base commit"]
-    D --> A["Agent 生成 Trace 与 Patch"]
-    A --> P["只导出非空 predictions.jsonl"]
-    P --> H["官方 SWE-bench Docker Harness"]
-    H --> R["results.json"]
-    R --> M["按 instance_id 合并回原 3 题"]
+flowchart TB
+    subgraph A["阶段 1：准备 Agent 安全输入"]
+        A1["SWE-bench Lite 原始实例"]
+        A2["只保留 instance_id / repo / base_commit / problem_statement"]
+        A3["移除参考 Patch 与评测标签"]
+        A4["写入 swebench-inputs.json"]
+        A1 --> A2 --> A3 --> A4
+    end
+
+    subgraph B["阶段 2：校验并隔离历史仓库"]
+        B1["定位本地完整仓库镜像"]
+        B2{"仓库、base_commit 和 Git Objects 是否完整？"}
+        B3["创建临时 shared clone"]
+        B4["detached checkout 到精确 base_commit"]
+        B5{"HEAD 是否等于 base_commit？"}
+        BF["记录 missing_repository / missing_base_commit / incomplete_repository"]
+
+        B1 --> B2
+        B2 -->|否| BF
+        B2 -->|是| B3 --> B4 --> B5
+    end
+
+    A4 --> B1
+
+    subgraph C["阶段 3：Coding Agent 解决 Issue"]
+        C1["S4 配置：Discovery Tools 开启；Skills/Subagents 关闭"]
+        C2["输入 Problem Statement 与隔离仓库"]
+        C3["模型分析下一步"]
+        C4{"选择动作"}
+        C5["list_files / search_text：发现目录和符号"]
+        C6["read_file：读取相关实现"]
+        C7["run_tests：获取失败断言"]
+        C8["write_file / git_apply：修改源码"]
+        C9["git_diff：读取真实仓库 Patch"]
+        C10["结构化 Observation：结果、错误、退出码与耗时"]
+        C11{"继续还是停机？"}
+        C12["利用 Observation 修正下一步"]
+        C13["结束：tests_passed / incomplete / max_tool_calls / repeated_action"]
+
+        C1 --> C2 --> C3 --> C4
+        C4 --> C5 --> C10
+        C4 --> C6 --> C10
+        C4 --> C7 --> C10
+        C4 --> C8 --> C10
+        C4 --> C9 --> C10
+        C10 --> C11
+        C11 -->|继续且预算充足| C12 --> C3
+        C11 -->|停机| C13
+    end
+
+    B5 -->|是| C1
+    B5 -->|否| BF
+
+    subgraph D["阶段 4：保存候选与诊断证据"]
+        D1["从 Trace 提取 Git Patch"]
+        D2["保存 trace.json：步骤、调用、Observation、Token"]
+        D3["保存 patch.diff"]
+        D4["记录 local_tests_passed / stop_reason / patch_bytes"]
+        D5{"Patch 是否非空？"}
+        D6["加入 predictions.jsonl"]
+        D7["标记 empty_patch，不提交 Harness"]
+
+        D1 --> D2
+        D1 --> D3
+        D1 --> D4
+        D1 --> D5
+        D5 -->|是| D6
+        D5 -->|否| D7
+    end
+
+    C13 --> D1
+
+    subgraph E["阶段 5：官方 SWE-bench Docker Harness"]
+        E1["读取 predictions.jsonl"]
+        E2["创建官方 Docker 环境并 checkout 同一 base_commit"]
+        E3["应用 model_patch"]
+        E4{"Patch 能否应用？"}
+        E5["运行 FAIL_TO_PASS：原失败测试必须通过"]
+        E6["运行 PASS_TO_PASS：原通过测试不能回归"]
+        E7{"两组测试是否满足？"}
+        E8["resolved"]
+        E9["unresolved / error / infra_failure"]
+
+        E1 --> E2 --> E3 --> E4
+        E4 -->|否| E9
+        E4 -->|是| E5 --> E6 --> E7
+        E7 -->|是| E8
+        E7 -->|否| E9
+    end
+
+    D6 --> E1
+
+    subgraph F["阶段 6：合并官方结果并保留完整分母"]
+        F1["读取 Harness results.json"]
+        F2["校验未知、重复和遗漏的 instance_id"]
+        F3["把 resolved / unresolved 写回每条 Record"]
+        F4["空 Patch 记为 not_submitted_empty_patch"]
+        F5["保持原始任务分母为 3"]
+        F6["写回 comparison.json"]
+        F7["本次最终结果：1/3 resolved"]
+
+        F1 --> F2 --> F3
+        D7 --> F4
+        F3 --> F5
+        F4 --> F5
+        F5 --> F6 --> F7
+    end
+
+    E8 --> F1
+    E9 --> F1
+```
+
+这条链路有三个不能混淆的判定层：
+
+1. `local_tests_passed` 是 Agent 工作目录中的本地反馈；
+2. `candidate_generated` 只说明形成了非空 Patch；
+3. `official_resolved` 才表示 Patch 在官方 Docker 环境同时通过 FAIL_TO_PASS 与 PASS_TO_PASS。
+
+因此：
+
+```text
+Agent 自报成功 ≠ 本地测试通过 ≠ 生成候选 ≠ 官方 Resolved
 ```
 
 输入文件只向 Agent 暴露：
