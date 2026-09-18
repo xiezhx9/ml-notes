@@ -1,7 +1,7 @@
 ---
 tags: [LLM, Coding-Agent, Skills, Subagents, Context-Engineering]
 aliases: [Task6 Skills 与 Subagents, Coding Agent 能力三层栈]
-updated: 2026-09-17
+updated: 2026-09-18
 ---
 
 # Task 6.3：Skills、Subagents 与上下文工程
@@ -84,6 +84,91 @@ description: 当任务要求运行测试或诊断测试失败时加载
 - 当前只截取前三个，没有更完整的冲突消解和 Token 预算器。
 
 设计 Skill 描述时，应明确“何时加载”和“不适用于什么”，而不只是写“处理代码”。
+
+### 4.1 Codex 的 Skill 匹配：模型决策与宿主预选分层
+
+> [!info] 源码边界
+> 以 2026-09-18 的 `openai/codex` HEAD `7498521` 为依据。Codex 当前正式路径不是先用 Embedding 或 BM25 唯一决定 Skill；隐式语义匹配主要交给模型，词法选择器仍在 shadow experiment 中。
+
+#### 正式路径的完整数据流
+
+```text
+扫描各来源下的 SKILL.md
+→ 解析 name / description / short_description / locator / authority
+→ 按 Token 预算渲染 Available Skills Catalog
+→ 作为 developer context 交给模型
+→ 显式点名：宿主精确匹配并自动注入完整 SKILL.md
+→ 未点名：模型根据 description 判断，再按需读取 SKILL.md
+→ 仅加载被选 Skill 直接引用的 references / scripts / assets
+```
+
+Codex 把“显式选择”和“隐式语义匹配”分开：
+
+- UI 的 Skill mention、`skill://...`、`SKILL.md` 路径按 locator 精确匹配；
+- 文本中的 `$skill-name` 按已启用的 `name` 精确匹配；
+- 重复项用 `authority + package` 去重，不仅看名字；
+- 显式命中后，宿主读取完整正文，用 `<skill>...</skill>` 边界注入；
+- 没有显式点名时，模型先看元数据 Catalog，自己决定是否通过文件读取或 `skills.read` 加载正文。
+
+这样的核心不是“宿主替模型完成全部语义判断”，而是：
+
+```text
+确定性意图（用户点名） → 精确路由
+模糊意图（任务语义） → 模型阅读 Catalog 后选择
+大文档与资源             → 选中后才渐进加载
+```
+
+#### Codex 正在影子评测的廉价选择器
+
+开源代码中已经有多种候选召回算法：
+
+| 方法 | 技巧 | 主要解决的问题 |
+|---|---|---|
+| Weighted Lexical | Skill 名完整短语命中最高分，`name > short_description > description` | 便宜、可解释的关键词召回 |
+| Fielded BM25 | 三个字段权重约为 `8 : 4 : 1`，考虑词频和稀有度 | 限制通用词导致的误匹配 |
+| Character N-gram | 对字符片段计分 | 处理词形、拼写和缺少空格的匹配 |
+| Multi-query Lexical | 按换行、句子和 `and / then / also` 拆分多个子查询 | 一条用户请求同时对应多个 Skill |
+| Routing Card | 使用更明确的路由描述与依赖信息 | 减少只看短描述的歧义 |
+| LRU | 提升近期在当前任务中真正使用过的 Skill | 利用多轮任务的连续性 |
+| RRF / 融合排名 | 融合词法、字符、LRU 等多路排名 | 降低单个召回器偏差 |
+
+但这些选择器目前的关键限制是：
+
+> [!warning] Shadow 不等于生产决策
+> 它们每轮预测最多 50 个候选，却不改变模型实际看到的 Catalog。宿主再观察模型真正读取或执行了哪个 Skill，记录 `hit`、`rank`、候选缩减率和耗时。这是用真实调用作为标签的在线影子评测，不是已接管路由的算法。
+
+#### 可迁移的匹配技巧
+
+1. **把 description 写成 Routing Card**：包含触发条件、输出类型和负向边界，不只写宽泛能力。
+2. **显式意图优先确定性路由**：用户点名时不应再靠相似度猜测；重名时优先完整 locator。
+3. **分离发现和加载**：长期只放短元数据，正文、脚本和资源必须在选中后才进入工作上下文。
+4. **候选召回与最终决策分层**：当 Skill 很多时，先用廉价方法保召回，再让模型在小候选集上做语义取舍。
+5. **评估实际调用而不是自报命中**：通过读取 `SKILL.md`、运行 Skill 脚本或 `skills.read` 的真实轨迹确定是否使用。
+6. **同时测量质量和成本**：至少记录 Recall@K、MRR/命中排名、误加载率、Catalog Token 和额外延迟。
+7. **多 Skill 只取最小覆盖集**：同时命中时要处理职责重叠、顺序与冲突，不是全部无脑注入。
+
+#### 对当前 Task6 Loader 的启发
+
+当前 Task6 是宿主用关键词评分后直接注入 Top 3 正文，在 Skill 少、目标可控时简单有效，但宿主过早承担了最终语义决策。更接近 Codex 的演进路径是：
+
+```text
+list_skills() 只返回紧凑 Catalog
+→ 显式名称或 locator 精确匹配
+→ Skill 很多时，用词法 / BM25 做可选候选召回
+→ 将候选元数据给模型
+→ 模型调用 load_skill(name) 按需读取正文
+→ Trace 记录 matched / loaded / actually_used
+→ 用实际调用评估召回器，再决定是否让它接管路由
+```
+
+安全边界不能因为匹配成功而放宽：Skill 只能指导如何做，Tool 白名单、路径限制和 Evaluator 仍必须由宿主强制执行。
+
+源码定位：
+
+- [Catalog 和渐进加载](https://github.com/openai/codex/blob/7498521d288b9b3b96ffba4eedf089d8d6e06a84/codex-rs/ext/skills/src/catalog_prompt.rs)
+- [显式 Skill mention 精确匹配](https://github.com/openai/codex/blob/7498521d288b9b3b96ffba4eedf089d8d6e06a84/codex-rs/ext/skills/src/selection.rs)
+- [选中后读取并注入正文](https://github.com/openai/codex/blob/7498521d288b9b3b96ffba4eedf089d8d6e06a84/codex-rs/ext/skills/src/extension.rs)
+- [Shadow Selection Experiment](https://github.com/openai/codex/blob/7498521d288b9b3b96ffba4eedf089d8d6e06a84/codex-rs/ext/skills/src/shadow_selection_experiment/mod.rs)
 
 ## 5. Subagent 的独立性体现在哪里
 
@@ -349,6 +434,9 @@ Working Memory 至少应记录：
 8. 为什么不应依赖服务端从左侧自动截断 Agent 历史？
 9. 完整 Trace 为什么不应全部保留在模型工作上下文中？
 10. Prefix Cache 和更大 KV Cache 能否替代 Context Compaction？
+11. Codex 的隐式 Skill 匹配目前由谁完成最终判断？
+12. Codex 源码已有 BM25 等选择器，为什么不能说它们已接管生产路由？
+13. 如果 Task6 要向 Codex 靠拢，SkillLoader 最重要的结构变化是什么？
 
 ### 自测标准答案
 
@@ -381,3 +469,12 @@ Working Memory 至少应记录：
 
 > [!success]- 标准答案：10. 不能
 > Prefix Cache 只减少重复前缀的计算时间，不减少 Token；更大 KV Cache 不会自动扩大 `max_model_len`。它们都不会替代对旧 Observation 的结构化压缩。
+
+> [!success]- 标准答案：11. 模型根据 Catalog 做语义判断
+> 宿主先把 Skill 名称、描述和 locator 放入 developer context。用户未显式点名时，模型判断任务是否匹配某个 description，再读取该 Skill 的正文。
+
+> [!success]- 标准答案：12. 它们只在 Shadow Mode 中预测
+> 这些选择器会产生候选排名并记录命中、排名和成本，但不改变模型看到的 Catalog。它们的预测要与模型真正读取或执行的 Skill 比较，暂未成为强制路由。
+
+> [!success]- 标准答案：13. 把“宿主直接注入 Top K 正文”改成“候选召回 + 模型按需加载”
+> Loader 先提供紧凑 Catalog，显式点名做精确匹配，Skill 很多时才用廉价选择器召回候选，再由模型通过 `load_skill` 加载正文。同时保留 Tool 权限与 Evaluator 的宿主强制边界。
