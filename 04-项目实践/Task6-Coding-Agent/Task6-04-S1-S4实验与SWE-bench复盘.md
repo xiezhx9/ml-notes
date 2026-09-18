@@ -1,7 +1,7 @@
 ---
 tags: [LLM, Coding-Agent, Quantization, Subagents, Skills, SWE-bench, Evaluation]
 aliases: [Task6 实验复盘, Task6 S1 S2 S3 S4, SWE-bench 验收]
-updated: 2026-09-18
+updated: 2026-09-19
 ---
 
 # Task 6.4：S1–S4 实验与 SWE-bench 复盘
@@ -148,7 +148,37 @@ vLLM 的 Continuous Batching 会把多个活跃 Sequence 的“下一个 Token�
 
 AWQ 默认没有改变公式中的 $S$，因为 KV Cache 仍通常使用 FP16/BF16。要减少每个 Token 的缓存占用，需要后端额外支持 FP8/INT8 KV Cache；降低 `max_model_len`、`max_num_seqs` 或并发量则是减少所需 Block 数量。
 
-### 2.5 S1 的正确结论
+### 2.5 KV Cache 为什么可以量化，却不能无脑低比特
+
+KV Cache 当然可以量化。区别在于：模型权重是可提前分析和校准的静态参数，KV Cache 则是每个请求、每层、每个 Token 在推理时实时产生的激活值。
+
+```text
+新 Token
+  -> 计算 K / V
+  -> 量化后写入 KV Cache
+  -> 后续 Attention 读取时反量化或使用融合 Kernel
+```
+
+低比特 KV Cache 的难点主要有三个：
+
+- **数值分布动态且不均匀**：不同请求、层、Head 和 Token 的取值范围会变化。KIVI 的分析说明 K 更适合 per-channel 量化，V 更适合 per-token 量化，不能简单套用同一个 Scale。
+- **误差会持续影响后续 Token**：K 的偏差会改变 Attention Score，Softmax 可能将小误差放大为“关注错了位置”；V 的偏差则直接影响取回的内容。上下文越长，旧 KV 被重复读取的次数越多。
+- **省显存不等于单请求更快**：写入需要计算 Scale/Zero-point，读取需要反量化或专用 Attention Kernel。当上下文很短、KV Cache 还不是瓶颈时，这些额外开销可能抵消显存带宽收益。
+
+工程上可以按以下梯度理解：
+
+| KV Cache 精度 | 主要优点 | 主要代价 |
+|---|---|---|
+| FP16/BF16 | 质量和 Kernel 兼容性最稳 | 显存占用大 |
+| FP8 | KV 显存约减半，通常是实用折中 | 需要合适的 Scale 和后端支持 |
+| INT8 | 同样可显著减少缓存 | 粒度、Kernel 和模型兼容性更敏感 |
+| INT4/INT2 | 长上下文和高并发的理论收益更大 | 质量风险高，常需 K/V 非对称量化和特制 Kernel |
+
+对本次 RTX 3090 实验，FP8 KV Cache 更应视为“增加可容纳 Token 和并发请求数”的容量优化，不能预设单请求 TPS 必然上升。需要对比 KV 精度改变前后的最大可用 Token 数、并发吞吐、TTFT、TPOT 和任务质量，才能判断是否值得。
+
+参考：[KIVI：2-bit KV Cache 量化](https://arxiv.org/abs/2402.02750)；[vLLM Quantized KV Cache](https://docs.vllm.ai/en/latest/features/quantization/quantized_kvcache.html)。
+
+### 2.6 S1 的正确结论
 
 - 本轮 FP16 成功率更高，优势来自一个多文件任务；
 - AWQ 模型权重更小、平均端到端耗时更低，并释放更多 KV Cache 空间；
@@ -481,6 +511,7 @@ official_resolved = true
 7. S4 中 `local_tests_passed=false` 与 `official_resolved=true` 为什么能同时成立？
 8. 1/1 和 1/3 分别回答什么问题？
 9. S4 当前最主要的系统瓶颈是什么？
+10. KV Cache 既然能量化，为什么不总是使用 INT4/INT2？
 
 ### 自测标准答案
 
@@ -510,3 +541,6 @@ official_resolved = true
 
 > [!success]- 标准答案：9. 候选生成和上下文效率
 > 两个失败实例在 24 次工具调用与四十多万 Token 后仍为空 Patch。应优先改善仓库发现、上下文压缩、无进展检测和阶段预算，而不是只优化已生成 Patch 的官方通过率。
+
+> [!success]- 标准答案：10. 动态分布、误差传播与 Kernel 开销
+> KV 是在线产生的激活值，分布会随层、Head、Token 和请求变化；K 的误差会影响 Attention Score，V 的误差会影响取回内容。更低比特还需更细粒度 Scale、反量化与专用 Kernel。因此它可以节省显存并提升并发容量，但不能保证质量无损或单请求延迟更低。
